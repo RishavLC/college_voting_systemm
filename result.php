@@ -1,69 +1,25 @@
 <?php
-// Hardcoded election data (faculty, batch, semester => election details + candidates)
-// Batches follow the Nepali academic calendar (B.S.) used by the college: 2080-2083.
-$election_data = [
-    'BCA_2081_5' => [
-        'name' => 'BCA 5th Semester Election',
-        'date' => '2081-06-15',
-        'candidates' => [
-            ['name' => 'John Doe', 'votes' => 45],
-            ['name' => 'Jane Smith', 'votes' => 38],
-            ['name' => 'Emily Johnson', 'votes' => 52],
-            ['name' => 'Michael Brown', 'votes' => 29],
-        ]
-    ],
-    'BIM_2080_3' => [
-        'name' => 'BIM 3rd Semester Election',
-        'date' => '2080-06-20',
-        'candidates' => [
-            ['name' => 'Alice Wonder', 'votes' => 30],
-            ['name' => 'Bob Builder', 'votes' => 25],
-            ['name' => 'Carol Danvers', 'votes' => 40],
-            ['name' => 'David Beckham', 'votes' => 12],
-        ]
-    ],
-    'BCA_2080_7' => [
-        'name' => 'BCA 7th Semester Election',
-        'date' => '2080-05-10',
-        'candidates' => [
-            ['name' => 'Sarah Connor', 'votes' => 60],
-            ['name' => 'James Bond', 'votes' => 55],
-            ['name' => 'Harry Potter', 'votes' => 70],
-        ]
-    ],
-    'BBS_2082_2' => [
-        'name' => 'BBS 2nd Semester Election',
-        'date' => '2082-07-01',
-        'candidates' => [
-            ['name' => 'Tony Stark', 'votes' => 48],
-            ['name' => 'Steve Rogers', 'votes' => 43],
-            ['name' => 'Bruce Banner', 'votes' => 21],
-            ['name' => 'Natasha Romanoff', 'votes' => 35],
-        ]
-    ],
-    'BITM_2081_4' => [
-        'name' => 'BITM 4th Semester Election',
-        'date' => '2081-04-18',
-        'candidates' => [
-            ['name' => 'Peter Parker', 'votes' => 33],
-            ['name' => 'Wade Wilson', 'votes' => 41],
-            ['name' => 'Diana Prince', 'votes' => 37],
-        ]
-    ],
-    'BHM_2083_1' => [
-        'name' => 'BHM 1st Semester Election',
-        'date' => '2083-02-05',
-        'candidates' => [
-            ['name' => 'Clark Kent', 'votes' => 22],
-            ['name' => 'Bruce Wayne', 'votes' => 27],
-            ['name' => 'Barry Allen', 'votes' => 19],
-        ]
-    ],
-];
+require_once 'Database/db_connect.php';
 
-$faculties = ['BCA', 'BIM', 'BITM', 'Bsc. CSIT', 'BHM', 'BBS'];
-$batches = ['2080', '2081', '2082', '2083'];
-$semesters = range(1, 8);
+// ------------------------------------------------------------------
+// Dynamic data source: results are now pulled live from the database
+// (election / candidate / student / vote tables) instead of a
+// hardcoded array. The template/markup/JS below is untouched — only
+// this data block changed, and it still hands the template the exact
+// same $election / $candidates / $total_votes / $winner /
+// $faculties / $batches / $semesters shapes it always expected.
+// ------------------------------------------------------------------
+
+// Filter dropdown options, built from whatever elections actually exist
+$faculties = [];
+$fRes = $conn->query("SELECT DISTINCT election_faculty FROM election ORDER BY election_faculty");
+while ($fRes && $row = $fRes->fetch_assoc()) { $faculties[] = $row['election_faculty']; }
+
+$batches = [];
+$bRes = $conn->query("SELECT DISTINCT election_batch FROM election ORDER BY election_batch DESC");
+while ($bRes && $row = $bRes->fetch_assoc()) { $batches[] = $row['election_batch']; }
+
+$semesters = range(1, 8); // fixed valid domain (matches the `election_semester` CHECK constraint)
 
 // Get filter inputs
 $faculty = isset($_GET['faculty']) ? trim($_GET['faculty']) : '';
@@ -71,21 +27,71 @@ $batch = isset($_GET['batch']) ? trim($_GET['batch']) : '';
 $semester = isset($_GET['semester']) ? intval($_GET['semester']) : 0;
 
 $election = null;
+$election_pending = false; // true when the election exists but hasn't been closed by the admin yet
 $candidates = [];
 $total_votes = 0;
 $winner = null;
 
 if ($faculty && $batch && $semester) {
-    $election_key = $faculty . '_' . $batch . '_' . $semester;
-    if (isset($election_data[$election_key])) {
-        $election = $election_data[$election_key];
-        $candidates = $election['candidates'];
-        $total_votes = array_sum(array_column($candidates, 'votes'));
-        if ($total_votes > 0) {
-            $max_votes = max(array_column($candidates, 'votes'));
-            foreach ($candidates as $c) {
-                if ($c['votes'] == $max_votes) { $winner = $c; break; }
+    // Find the matching election for this faculty/batch/semester combo.
+    // If a faculty ever re-runs the same batch/semester election again in
+    // a later year, the most recent one wins.
+    $stmt = $conn->prepare("SELECT election_id, election_name, election_date, election_status
+                             FROM election
+                             WHERE election_faculty = ? AND election_batch = ? AND election_semester = ?
+                             ORDER BY election_date DESC LIMIT 1");
+    $stmt->bind_param("ssi", $faculty, $batch, $semester);
+    $stmt->execute();
+    $electionRow = $stmt->get_result()->fetch_assoc();
+
+    if ($electionRow) {
+        // Results are only published once the admin has closed the
+        // election (Admin > Elections > Status = Closed). While it's
+        // still "upcoming" or "active", students shouldn't see live
+        // vote counts here.
+        if ($electionRow['election_status'] === 'closed') {
+            $election_id = $electionRow['election_id'];
+            $election = [
+                'name' => $electionRow['election_name'],
+                'date' => $electionRow['election_date'],
+            ];
+
+            // Candidates for this specific election
+            $candStmt = $conn->prepare("SELECT c.candidate_id, s.student_name AS name
+                                         FROM candidate c
+                                         JOIN student s ON s.student_id = c.student_id
+                                         WHERE c.election_id = ?
+                                         ORDER BY c.candidate_id");
+            $candStmt->bind_param("i", $election_id);
+            $candStmt->execute();
+            $candRes = $candStmt->get_result();
+
+            // Vote counts per candidate, tallied from the vote table
+            $voteCounts = [];
+            $voteStmt = $conn->prepare("SELECT candidate_id, COUNT(*) AS votes FROM vote WHERE election_id = ? GROUP BY candidate_id");
+            $voteStmt->bind_param("i", $election_id);
+            $voteStmt->execute();
+            $voteRes = $voteStmt->get_result();
+            while ($vrow = $voteRes->fetch_assoc()) {
+                $voteCounts[$vrow['candidate_id']] = (int) $vrow['votes'];
             }
+
+            while ($crow = $candRes->fetch_assoc()) {
+                $candidates[] = [
+                    'name' => $crow['name'],
+                    'votes' => $voteCounts[$crow['candidate_id']] ?? 0,
+                ];
+            }
+
+            $total_votes = array_sum(array_column($candidates, 'votes'));
+            if ($total_votes > 0) {
+                $max_votes = max(array_column($candidates, 'votes'));
+                foreach ($candidates as $c) {
+                    if ($c['votes'] == $max_votes) { $winner = $c; break; }
+                }
+            }
+        } else {
+            $election_pending = true;
         }
     }
 }
@@ -125,11 +131,14 @@ function cand_initials($name) {
             <h6 class="text-muted mb-1" style="letter-spacing:.05em; text-transform:uppercase; font-size:.72rem;">Himalaya Darshan College &middot; HDCVotes</h6>
             <?php if ($election): ?>
                 <h3><?= htmlspecialchars($election['name']) ?></h3>
-                <p class="text-muted mb-2"><i class="bi bi-calendar-event"></i> <?= htmlspecialchars($election['date']) ?> B.S.</p>
+                <p class="text-muted mb-2"><i class="bi bi-calendar-event"></i> <?= htmlspecialchars(date('F j, Y', strtotime($election['date']))) ?></p>
                 <span class="election-badge"><i class="bi bi-people"></i> Total Votes: <?= $total_votes ?></span>
                 <span class="badge bg-secondary ms-1"><?= htmlspecialchars($faculty) ?></span>
                 <span class="badge bg-secondary ms-1">Batch <?= htmlspecialchars($batch) ?></span>
                 <span class="badge bg-secondary ms-1">Sem <?= $semester ?></span>
+            <?php elseif ($election_pending): ?>
+                <h3 class="placeholder-text"><i class="bi bi-hourglass-split text-warning"></i> Results not yet available</h3>
+                <p class="text-muted mb-0">Voting for this election hasn't closed yet. Please check back once the admin closes it.</p>
             <?php elseif ($faculty && $batch && $semester): ?>
                 <h3 class="placeholder-text"><i class="bi bi-exclamation-triangle text-warning"></i> No election found</h3>
                 <p class="text-muted mb-0">No results match this faculty, batch and semester.</p>
@@ -243,6 +252,12 @@ function cand_initials($name) {
                 </div>
             </div>
 
+        </div>
+    <?php elseif ($election_pending): ?>
+        <div class="result-card no-data animate-card">
+            <i class="bi bi-hourglass-split display-3 text-warning"></i>
+            <h4>Voting is still open</h4>
+            <p class="text-muted">Results will be published here once the admin closes this election.</p>
         </div>
     <?php elseif ($faculty && $batch && $semester): ?>
         <div class="result-card no-data animate-card">

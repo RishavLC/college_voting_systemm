@@ -18,6 +18,7 @@ $result = $conn->query($sql);
         <div class="d-flex gap-2">
             <a href="add_student.php" class="btn btn-sm btn-light"><i class="bi bi-plus-lg"></i> Add</a>
             <button type="button" class="btn btn-sm btn-light" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-file-earmark-arrow-up"></i> Import Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#resetAttendanceModal"><i class="bi bi-arrow-counterclockwise"></i> Reset All Attendance</button>
         </div>
     </div>
     <div class="card-body">
@@ -72,6 +73,8 @@ $result = $conn->query($sql);
                         <div class="d-flex gap-1 justify-content-end flex-wrap">
                             <?php if (!$row['is_present']): ?>
                                 <a href="mark_present.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-success" title="Mark Present"><i class="bi bi-check2-circle"></i></a>
+                            <?php else: ?>
+                                <a href="mark_absent.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-secondary" title="Mark Absent" onclick="return confirm('Mark this student as absent again?')"><i class="bi bi-x-circle"></i></a>
                             <?php endif; ?>
                             <a href="edit_student.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-warning" title="Edit"><i class="bi bi-pencil-fill"></i></a>
                             <a href="delete_student.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-danger" title="Delete" onclick="return confirm('Delete this student?')"><i class="bi bi-trash-fill"></i></a>
@@ -92,6 +95,29 @@ $result = $conn->query($sql);
             <?php endif; ?>
             </tbody>
         </table>
+        </div>
+    </div>
+</div>
+
+<!-- ====== RESET ALL ATTENDANCE MODAL ====== -->
+<div class="modal fade" id="resetAttendanceModal" tabindex="-1" aria-labelledby="resetAttendanceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="resetAttendanceModalLabel"><i class="bi bi-exclamation-triangle-fill"></i> Reset All Attendance</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>This will mark <strong>every student</strong> as <strong>absent</strong> again.</p>
+                <p class="text-muted small mb-0">It only resets check-in/attendance status — it does not affect votes already cast or OTPs already issued.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="POST" action="reset_all_present.php">
+                    <input type="hidden" name="confirm_reset" value="1">
+                    <button type="submit" class="btn btn-warning"><i class="bi bi-arrow-counterclockwise"></i> Reset All to Absent</button>
+                </form>
+            </div>
         </div>
     </div>
 </div>

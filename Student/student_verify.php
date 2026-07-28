@@ -4,17 +4,85 @@ session_destroy();
 session_start();
 
 require_once '../Database/db_connect.php';
+require_once '../Database/sms_config.php';
 
 $message = '';
 $error = '';
 $mobile = '';
-$success_otp = ''; // will hold OTP if generated
+$otp_sent = false; // true once an OTP has actually been sent via SMS (never shown on screen)
 
-// Mock SMS function
-function sendSMS($phone, $otp) {
-    $log = "OTP for $phone: $otp\n";
-    file_put_contents('sms_log.txt', $log, FILE_APPEND);
-    return true;
+// Normalize whatever the student typed (+9779800000000, 9779800000000,
+// 9800000000 ...) down to the plain 10-digit local number that is stored
+// in the `student` table, e.g. 9800000000.
+function normalizePhone($input) {
+    $p = preg_replace('/[^0-9]/', '', trim($input)); // strip spaces, +, dashes etc.
+    if (strlen($p) === 13 && str_starts_with($p, '977')) {
+        $p = substr($p, 3); // 9779800000000 -> 9800000000
+    }
+    return $p;
+}
+
+// Nepali mobile numbers: 10 digits, starting with 97 or 98 (e.g. 9800000000, 9700000000)
+function isValidNepaliMobile($p) {
+    return (bool) preg_match('/^9[78]\d{8}$/', $p);
+}
+
+// Send a real OTP SMS via the VerifiedSMS API.
+// $phone_local must already be the normalized 10-digit local number.
+// Returns ['success' => bool, 'reason' => string] — reason is only for
+// logs / debug display, never shown to students directly.
+function sendSMS($phone_local, $otp) {
+    $destination = '+977' . $phone_local;
+    $message = "Your HDCVotes OTP is $otp. Do not share this code with anyone.";
+
+    $ch = curl_init(SMS_API_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query([
+            'key'         => SMS_API_KEY,
+            'destination' => $destination,
+            'message'     => $message,
+            'type'        => 3, // 3 = OTP message type per VerifiedSMS docs
+        ]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 15,
+    ]);
+    $response = curl_exec($ch);
+    $curlErr = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    // Keep a debug/audit trail of send attempts. The OTP itself is logged
+    // here for admin troubleshooting only — this file is never shown to
+    // students and is not the source of truth (otp_requests table is).
+    $logLine = date('Y-m-d H:i:s') . " | dest=$destination | otp=$otp | http=$httpCode | " .
+               ($curlErr ? "curl_error=$curlErr" : "response=$response") . "\n";
+    file_put_contents('sms_log.txt', $logLine, FILE_APPEND);
+
+    if ($curlErr) {
+        // cURL couldn't even reach the API — usually a network/firewall
+        // problem, missing php-curl extension, or DNS/SSL issue on the
+        // server, not a problem with the phone number.
+        return ['success' => false, 'reason' => "Network error calling SMS API: $curlErr"];
+    }
+
+    $data = json_decode($response, true);
+
+    if (!is_array($data)) {
+        // The API didn't return valid JSON at all (e.g. an HTML error
+        // page, or the URL/endpoint is wrong).
+        return ['success' => false, 'reason' => "Unexpected response (HTTP $httpCode): " . substr((string)$response, 0, 200)];
+    }
+
+    if (isset($data['status']) && $data['status'] === 'success') {
+        return ['success' => true, 'reason' => 'sent'];
+    }
+
+    // API responded but rejected the request — key invalid, no balance,
+    // bad phone format, rate-limited, etc. $data['message'] has the
+    // specific reason straight from VerifiedSMS.
+    $apiMessage = $data['message'] ?? 'Unknown API error';
+    return ['success' => false, 'reason' => "API rejected request (HTTP $httpCode): $apiMessage"];
 }
 
 // Generate unique OTP
@@ -27,17 +95,17 @@ function generateUniqueOTP($conn) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['verify'])) {
-    $mobile = trim($_POST['mobile']);
-    if (empty($mobile)) {
+    $mobileRaw = trim($_POST['mobile']);
+    if (empty($mobileRaw)) {
         $error = "Please enter your mobile number.";
     } else {
+        $mobile = normalizePhone($mobileRaw);
+
+        if (!isValidNepaliMobile($mobile)) {
+            $error = "Please enter a valid 10-digit mobile number starting with 97 or 98 (e.g., 98XXXXXXXX or 97XXXXXXXX).";
+        } else {
         $stmt = $conn->prepare("SELECT student_id, student_name, is_present FROM student WHERE student_phone = ?");
-
-if (!$stmt) {
-    die("Prepare failed: " . $conn->error);
-}
-
-$stmt->bind_param("s", $mobile);
+        $stmt->bind_param("s", $mobile);
         $stmt->execute();
         $result = $stmt->get_result();
         if ($result->num_rows == 0) {
@@ -73,8 +141,8 @@ $stmt->bind_param("s", $mobile);
                     $update = $conn->prepare("UPDATE student SET student_otp = ? WHERE student_id = ?");
                     $update->bind_param("si", $otp, $student_id);
                     if ($update->execute()) {
-                        $sms_sent = sendSMS($mobile, $otp);
-                        if ($sms_sent) {
+                        $sms_result = sendSMS($mobile, $otp);
+                        if ($sms_result['success']) {
                             // Log the request in otp_requests (source of truth
                             // for the "one OTP per student" rule and what the
                             // admin looks up to manually give a student their
@@ -85,17 +153,25 @@ $stmt->bind_param("s", $mobile);
 
                             $_SESSION['verify_student_id'] = $student_id;
                             $_SESSION['verify_mobile'] = $mobile;
-                            // Store OTP in session to display on this page
-                            $_SESSION['generated_otp'] = $otp;
-                            $success_otp = $otp; // for immediate display
+                            $otp_sent = true; // OTP was texted to the student's phone — never displayed here
                         } else {
-                            $error = "Failed to send SMS. Please try again.";
+                            // SMS failed to send: roll back the OTP we wrote to
+                            // `student` so a retry can generate a fresh one,
+                            // and do NOT log to otp_requests (the student never
+                            // actually received a code, so this shouldn't count
+                            // against their one-time allowance).
+                            $conn->query("UPDATE student SET student_otp = NULL WHERE student_id = $student_id");
+                            $error = "We couldn't send the SMS right now. Please try again in a moment, or contact an admin.";
+                            if (defined('SMS_DEBUG') && SMS_DEBUG) {
+                                $error .= " [DEBUG: " . $sms_result['reason'] . "]";
+                            }
                         }
                     } else {
                         $error = "Database error. Please try again.";
                     }
                 }
             }
+        }
         }
     }
 }
@@ -110,9 +186,9 @@ $stmt->bind_param("s", $mobile);
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="../assets/css/custom.css">
     <link rel="icon" href="../assets/img/logo.png">
-    <?php if ($success_otp): ?>
-        <!-- Auto-redirect after 3 seconds -->
-        <meta http-equiv="refresh" content="3;url=verify_otp.php">
+    <?php if ($otp_sent): ?>
+        <!-- Auto-redirect after 2 seconds -->
+        <meta http-equiv="refresh" content="2;url=verify_otp.php">
     <?php endif; ?>
 </head>
 <body class="auth-body">
@@ -136,20 +212,21 @@ $stmt->bind_param("s", $mobile);
                 <div class="alert alert-danger"><i class="bi bi-exclamation-circle me-1"></i><?= htmlspecialchars($error) ?></div>
             <?php endif; ?>
 
-            <?php if ($success_otp): ?>
+            <?php if ($otp_sent): ?>
                 <div class="alert alert-success text-center">
-                    <strong>OTP generated successfully!</strong><br>
-                    Your OTP is: <span class="fw-bold fs-3 d-inline-block mt-1" style="letter-spacing:.3em;"><?= $success_otp ?></span><br>
-                    <small class="text-muted">Redirecting to the verification page in 3 seconds…</small>
+                    <i class="bi bi-check-circle-fill fs-3 d-block mb-1"></i>
+                    <strong>OTP sent!</strong><br>
+                    We've texted a 6-digit code to <strong><?= htmlspecialchars($mobile) ?></strong>.<br>
+                    <small class="text-muted">Redirecting to the verification page in a moment…</small>
                 </div>
             <?php endif; ?>
 
-            <?php if (!$success_otp && $error !== 'already_requested'): // hide form once the student's one OTP request has been used ?>
+            <?php if (!$otp_sent && $error !== 'already_requested'): // hide form once the student's one OTP request has been used ?>
             <form method="POST">
                 <div class="mb-3">
                     <label for="mobile">Registered mobile number</label>
-                    <input type="tel" id="mobile" name="mobile" class="form-control" 
-                           placeholder="e.g., 9876543210" value="<?= htmlspecialchars($mobile) ?>" required>
+                    <input type="tel" id="mobile" name="mobile" class="form-control"
+                           placeholder="e.g., 98XXXXXXXX or 97XXXXXXXX" value="<?= htmlspecialchars($mobile) ?>" required>
                 </div>
                 <button type="submit" name="verify" class="btn btn-primary w-100"><i class="bi bi-send-fill me-1"></i>Verify & Send OTP</button>
             </form>
