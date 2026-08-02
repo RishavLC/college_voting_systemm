@@ -11,7 +11,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $faculty = $_POST['student_faculty'];
     $semester = $_POST['student_semester'];
     $phone = $_POST['student_phone'];
-    $email = $_POST['student_email'];
+    $email = trim($_POST['student_email']);
+    $email = $email === '' ? null : $email; // optional — store NULL if blank
 
     $stmt = $conn->prepare("INSERT INTO student (student_id, student_name, student_batch, student_faculty, student_semester, student_phone, student_email) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $stmt->bind_param("isssiss", $id, $name, $batch, $faculty, $semester, $phone, $email);
@@ -39,7 +40,7 @@ include 'header.php';
                 <div class="col-md-6"><label>Faculty</label><input type="text" name="student_faculty" class="form-control" required></div>
                 <div class="col-md-6"><label>Semester</label><input type="number" name="student_semester" class="form-control" min="1" max="8" required></div>
                 <div class="col-md-6"><label>Phone</label><input type="text" name="student_phone" class="form-control"></div>
-                <div class="col-12"><label>Email</label><input type="email" name="student_email" class="form-control" required></div>
+                <div class="col-12"><label>Email <span class="text-muted" style="text-transform:none;font-weight:500;">(optional)</span></label><input type="email" name="student_email" class="form-control"></div>
             </div>
             <div class="d-flex gap-2 mt-4">
                 <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>

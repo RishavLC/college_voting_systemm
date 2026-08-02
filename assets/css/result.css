@@ -79,10 +79,10 @@ a:hover{ color:var(--secondary-dark); }
 /* ==========================================================================
    Brand logo helper
    ========================================================================== */
-.brand-logo{ width:clamp(140px, 14vw, 220px); height:clamp(34px, 3.4vw, 52px); max-width:100%; }
-.brand-logo-sm{ width:clamp(140px, 14vw, 200px); height:clamp(42px, 4vw, 60px); border-radius:10px; object-fit:cover; max-width:100%; }
-.brand-logo-md{ width:clamp(48px, 4vw, 64px); height:clamp(48px, 4vw, 64px); }
-.brand-logo-lg{ width:clamp(68px, 5vw, 90px); height:clamp(68px, 5vw, 90px); }
+.brand-logo{ width:200px; height:48px;}
+.brand-logo-sm{ width:180px; height:55px;border-radius:10px; object-fit:cover; }
+.brand-logo-md{ width:54px; height:54px; }
+.brand-logo-lg{ width:76px; height:76px; }
 
 /* ==========================================================================
    Buttons
@@ -272,12 +272,6 @@ label{ font-weight:600; font-size:0.82rem; color:var(--muted); text-transform:up
 
 .content-wrapper{ padding:1.75rem; flex:1; }
 
-/* Huge / ultra-wide monitors: cap the admin content width so tables and
-   cards don't stretch to uncomfortable, hard-to-scan widths. */
-@media (min-width: 1800px){
-  .content-wrapper{ max-width:1700px; margin:0 auto; width:100%; }
-}
-
 @media (max-width: 991px){
   .sidebar{ transform:translateX(-100%); }
   .sidebar.open{ transform:translateX(0); box-shadow:var(--shadow-lg); }
@@ -371,31 +365,22 @@ label{ font-weight:600; font-size:0.82rem; color:var(--muted); text-transform:up
    ========================================================================== */
 .vote-body{ background:var(--bg); min-height:100vh; padding-bottom:3rem; }
 .vote-hero{
-  background:var(--primary);
-  border-bottom:1px solid var(--border);
-  color:var(--ink); padding:2rem 1.5rem 5rem; text-align:center; position:relative; overflow:hidden;
+  background:linear-gradient(120deg,var(--secondary),var(--secondary-dark) 60%, var(--tertiary) 145%);
+  color:#fff; padding:2rem 1.5rem 5rem; text-align:center; position:relative; overflow:hidden;
 }
 .vote-hero::after{
   content:''; position:absolute; inset:0;
-  background:
-    radial-gradient(circle at 80% 0%, rgba(244,130,10,0.10), transparent 50%),
-    radial-gradient(circle at 10% 100%, rgba(30,77,146,0.08), transparent 45%);
+  background:radial-gradient(circle at 80% 0%, rgba(244,130,10,0.25), transparent 50%);
 }
-.vote-hero .brand-logo{
-  position:relative; z-index:2;
-  width:280px; height:auto; max-height:80px;
-  background:#fff; border-radius:10px; padding:6px;
-  box-shadow:var(--shadow-md); margin-bottom:0.6rem;
-  object-fit:contain;
-}
-.vote-hero h2{ color:var(--ink); margin-bottom:0.3rem; position:relative; z-index:2; }
-.vote-hero p{ color:var(--muted); margin:0; position:relative; z-index:2; }
+.vote-hero .brand-logo{ position:relative; z-index:2; background:#fff; border-radius:50%; padding:6px; box-shadow:var(--shadow-md); margin-bottom:0.6rem; }
+.vote-hero h2{ color:#fff; margin-bottom:0.3rem; position:relative; z-index:2; }
+.vote-hero p{ color:rgba(255,255,255,0.85); margin:0; position:relative; z-index:2; }
 .vote-meta-pill{
   display:inline-flex; gap:0.6rem; flex-wrap:wrap; justify-content:center;
   margin-top:1rem; position:relative; z-index:2;
 }
 .vote-meta-pill span{
-  background:var(--secondary-soft); color:var(--secondary-dark); padding:0.35rem 0.9rem; border-radius:30px; font-size:0.8rem; font-weight:600;
+  background:rgba(255,255,255,0.16); padding:0.35rem 0.9rem; border-radius:30px; font-size:0.8rem; font-weight:600;
 }
 
 .vote-content{ max-width:1000px; margin:-3.2rem auto 0; padding:0 1rem; position:relative; z-index:2; }
@@ -426,7 +411,8 @@ label{ font-weight:600; font-size:0.82rem; color:var(--muted); text-transform:up
 .no-election{ background:linear-gradient(135deg,var(--tertiary-soft),#ffe4bd); }
 
 /* ==========================================================================
-   Results page
+   Results page (legacy scrollable card look — still used by other utility
+   classes such as .candidate-bar-container / .bar-wrapper / .cand-avatar below)
    ========================================================================== */
 @keyframes fadeInUp{ from{ opacity:0; transform:translateY(24px);} to{ opacity:1; transform:translateY(0);} }
 .animate-card{ animation:fadeInUp .6s ease forwards; }
@@ -435,9 +421,13 @@ label{ font-weight:600; font-size:0.82rem; color:var(--muted); text-transform:up
 
 .results-brand{ display:flex; align-items:center; justify-content:center; gap:0.75rem; margin-bottom:0.5rem; }
 
-.filter-card, .result-card{
+.filter-card{
   background:#fff; border-radius:var(--radius-lg); box-shadow:var(--shadow-md);
   padding:1.6rem; margin-bottom:1.6rem; border:1px solid var(--border);
+}
+.result-card{
+  background:#fff; border-radius:var(--radius-lg); box-shadow:var(--shadow-md);
+  padding:1.6rem; border:1px solid var(--border);
 }
 .chart-container{ height:300px; margin:1rem 0; }
 .candidate-bar-container{ margin:0.6rem 0; }
@@ -473,12 +463,6 @@ html.results-no-scroll, body.results-no-scroll{
   background:var(--bg);
 }
 
-/* Huge / ultra-wide monitors: keep the whole layout centered at a sane
-   max width instead of stretching bars/columns absurdly wide edge-to-edge. */
-@media (min-width: 1800px){
-  .results-page{ max-width:1900px; margin:0 auto; }
-}
-
 /* ---- Header bar: logo | title & badges | filter, all in one row ---- */
 .results-header-bar{
   flex:0 0 auto;
@@ -490,8 +474,6 @@ html.results-no-scroll, body.results-no-scroll{
   border-bottom:1px solid var(--border);
   box-shadow:var(--shadow-sm);
   z-index:20;
-  flex-wrap:wrap;
-  row-gap:0.5rem;
 }
 .rhb-logo{ flex:0 0 auto; }
 .rhb-logo img{ width:52px; height:52px; object-fit:contain; }
@@ -501,7 +483,7 @@ html.results-no-scroll, body.results-no-scroll{
   display:block; text-transform:uppercase; letter-spacing:.05em;
   font-size:0.68rem; font-weight:700; color:var(--muted); margin-bottom:1px;
 }
-.rhb-info h3{ font-size:1.05rem; margin:0 0 0.15rem; line-height:1.2; overflow-wrap:anywhere; }
+.rhb-info h3{ font-size:1.05rem; margin:0 0 0.15rem; line-height:1.2; }
 .rhb-sub{ margin:0; font-size:0.82rem; color:var(--muted); }
 .rhb-badges{ display:flex; flex-wrap:wrap; gap:0.4rem; }
 .badge-chip{
@@ -516,7 +498,6 @@ html.results-no-scroll, body.results-no-scroll{
   display:flex;
   align-items:flex-end;
   gap:0.55rem;
-  flex-wrap:wrap;
 }
 .rhb-field{ display:flex; flex-direction:column; }
 .rhb-field label{ margin-bottom:0.2rem; font-size:0.66rem; }
@@ -528,8 +509,7 @@ html.results-no-scroll, body.results-no-scroll{
   flex:1 1 auto;
   min-height:0;
   position:relative;
-  overflow-y:auto;
-  overflow-x:hidden;
+  overflow:hidden;
   padding:1.1rem 1.5rem;
   display:flex;
 }
@@ -567,7 +547,6 @@ html.results-no-scroll, body.results-no-scroll{
   height:100%;
   position:relative;
   overflow:hidden;
-  min-width:0; /* prevents flex children (incl. the chart canvas) from ever forcing the row wider than the viewport */
 }
 
 /* Chart: begins off-screen to the right, then slides left over exactly 3s
@@ -641,7 +620,14 @@ html.results-no-scroll, body.results-no-scroll{
   animation:winnerBadgeBreathe 1.6s ease-in-out infinite;
 }
 
-/* ---- Winner modal decorations ---- */
+/* ---- Winner modal decorations (unchanged) ---- */
+.modal-content{ border-radius:var(--radius-lg); border:none; overflow:hidden; box-shadow:var(--shadow-lg); }
+.modal-header{ border-bottom:1px solid var(--border); padding:1.1rem 1.5rem; }
+.modal-header.themed{ background:linear-gradient(120deg,var(--secondary),var(--secondary-dark)); color:#fff; }
+.modal-header.themed .btn-close{ filter:invert(1) grayscale(100%) brightness(200%); }
+.modal-header.themed .modal-title{ color:#fff; }
+.modal-footer{ border-top:1px solid var(--border); }
+.modal-body{ padding:1.5rem; text-align:center; }
 .crown{ font-size:2.2rem; color:var(--tertiary); margin-bottom:0.4rem; }
 .winner-photo{
   width:78px; height:78px; border-radius:50%; margin:0 auto 0.75rem;
@@ -668,14 +654,6 @@ html.results-no-scroll, body.results-no-scroll{
 /* ==========================================================================
    Modals — themed popups (Add Admin / Import Students / etc.)
    ========================================================================== */
-.modal-content{ border-radius:var(--radius-lg); border:none; overflow:hidden; box-shadow:var(--shadow-lg); }
-.modal-header{ border-bottom:1px solid var(--border); padding:1.1rem 1.5rem; }
-.modal-header.themed{ background:linear-gradient(120deg,var(--secondary),var(--secondary-dark)); color:#fff; }
-.modal-header.themed .btn-close{ filter:invert(1) grayscale(100%) brightness(200%); }
-.modal-header.themed .modal-title{ color:#fff; }
-.modal-footer{ border-top:1px solid var(--border); }
-.modal-body{ padding:1.5rem; }
-
 /* Topbar "Add Admin" CTA */
 .btn-add-admin{
   background:linear-gradient(135deg,var(--tertiary-light),var(--tertiary));

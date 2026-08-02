@@ -1,0 +1,520 @@
+/* ============================================================
+   HDC VOTES — Civic Ballot Design System
+   Palette: paper white / civic navy / seal gold
+   Type: Fraunces (display) + Inter (ui) + IBM Plex Mono (data)
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+:root{
+  /* colors */
+  --paper:      #F6F5F0;
+  --paper-dim:  #EFEDE5;
+  --card:       #FFFFFF;
+  --navy:       #14213D;
+  --navy-2:     #1E2E52;
+  --navy-tint:  #E9ECF4;
+  --gold:       #B98A2E;
+  --gold-2:     #D9AE55;
+  --gold-tint:  #FBF1DA;
+  --ink:        #1F2430;
+  --ink-soft:   #5B6072;
+  --line:       #E1DDD1;
+  --line-soft:  #EBE8DE;
+  --success:    #2F7A4F;
+  --success-tint: #E4F1E8;
+  --danger:     #B23A48;
+  --danger-tint:#FBEAEC;
+  /* candidate accent set — shared between the distribution chart and the ranked breakdown */
+  --acc-blue-l: #9AA9DA;
+  --acc-blue:   #7C8DC7;
+  --acc-teal-l: #82D2C2;
+  --acc-teal:   #5FBFAE;
+  --acc-red-l:  #C94E5C;
+  --shadow: 0 1px 2px rgba(20,33,61,.04), 0 8px 24px rgba(20,33,61,.06);
+  --shadow-lg: 0 4px 10px rgba(20,33,61,.06), 0 20px 48px rgba(20,33,61,.12);
+  --radius: 14px;
+  --radius-sm: 8px;
+  --ease: cubic-bezier(.22,1,.36,1);
+}
+
+*,*::before,*::after{ box-sizing:border-box; }
+html{ -webkit-text-size-adjust:100%; }
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:15.5px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* FIX: this rule was never closed in the original file, which silently
+   nested every rule that followed it (backdrop, buttons, cards, the
+   whole voting grid, admin layout, responsive overrides — literally
+   everything below) inside prefers-reduced-motion, so none of it applied
+   under normal conditions. Closed here, right after its own content. */
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+}
+
+/* ---------- texture backdrop (subtle ballot-paper grain via layered radial dots) ---------- */
+.civic-bg{
+  min-height:100vh;
+  width:100%;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(20,33,61,.035) 1px, transparent 0) 0 0/22px 22px,
+    radial-gradient(1100px 520px at 14% -8%, rgba(185,138,46,.10), transparent 60%),
+    radial-gradient(900px 480px at 100% 0%, rgba(20,33,61,.07), transparent 55%),
+    linear-gradient(180deg, var(--paper) 0%, var(--paper-dim) 100%);
+  display:flex;
+  flex-direction:column;
+}
+
+/* fixed-frame — used on login (OTP/admin) and the voting screen so the
+   page itself never scrolls; on the rare viewport too short to fit,
+   only the inner card/list scrolls, never the whole document */
+html:has(body.kiosk){ height:100%; overflow:hidden; }
+body.kiosk{ height:100vh; overflow:hidden; }
+body.kiosk .civic-bg{ height:100vh; min-height:0; overflow:hidden; }
+
+/* ---------- top ribbon ---------- */
+.ribbon{
+  height:5px;
+  width:100%;
+  background:linear-gradient(90deg,var(--navy) 0%, var(--navy) 45%, var(--gold) 45%, var(--gold) 100%);
+  background-size:200% 100%;
+}
+
+/* ---------- brand lockup ---------- */
+.brand{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  font-family:'Fraunces',serif;
+  font-weight:700;
+  font-size:20px;
+  color:var(--navy);
+  text-decoration:none;
+  letter-spacing:-.01em;
+}
+
+/* compact college brand — used in the topbar on student-facing pages */
+.brand-college{ gap:11px; }
+
+/* ---------- letterhead — folded into the top of the auth card itself,
+   so the branding and the form live in one cohesive card, not two ---------- */
+.letterhead{
+  text-align:center;
+  padding:clamp(18px,5vw,26px) clamp(18px,5vw,26px) clamp(14px,3vw,20px);
+  background:var(--paper-dim);
+  border-bottom:1px solid var(--line-soft);
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn{
+  --btn-bg: linear-gradient(155deg, var(--navy-2) 0%, var(--navy) 60%, #0F1830 100%);
+  --btn-fg: #fff;
+  appearance:none;
+  border:1px solid transparent;
+  background:var(--btn-bg);
+  background-size:160% 160%;
+  background-position:0% 0%;
+  color:var(--btn-fg);
+  font-family:'Inter',sans-serif;
+  font-weight:600;
+  font-size:14.5px;
+  padding:11px 20px;
+  border-radius:10px;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  transition:transform .15s var(--ease), box-shadow .15s var(--ease), background-position .35s var(--ease), opacity .15s;
+  position:relative;
+  overflow:hidden;
+}
+.btn svg{ width:16px; height:16px; flex:none; }
+.btn:hover{ transform:translateY(-1px); box-shadow:0 6px 16px rgba(20,33,61,.18); background-position:100% 100%; }
+.btn:active{ transform:translateY(0); }
+.btn:disabled{ opacity:.5; cursor:not-allowed; transform:none; box-shadow:none; }
+.btn-block{ width:100%; }
+.btn-gold{ --btn-bg: linear-gradient(155deg, var(--gold-2) 0%, var(--gold) 55%, #93701F 100%); --btn-fg: #2A1E05; }
+.btn-gold:hover{ box-shadow:0 6px 18px rgba(185,138,46,.4); }
+.btn-outline{ --btn-bg: transparent; --btn-fg: var(--navy); border-color:var(--line); background:transparent; }
+.btn-outline:hover{ background:var(--navy-tint); box-shadow:none; border-color:var(--navy-tint); }
+.btn-ghost{ --btn-bg: transparent; --btn-fg: var(--ink-soft); background:transparent; box-shadow:none !important; }
+.btn-ghost:hover{ color:var(--navy); transform:none; background:var(--paper-dim); }
+.btn-danger{ --btn-bg: linear-gradient(155deg, #C94E5C 0%, var(--danger) 60%, #8C2530 100%); --btn-fg:#fff; }
+.btn-danger-outline{ --btn-bg:transparent; --btn-fg:var(--danger); border-color:#ECC7CB; background:transparent; }
+.btn-danger-outline:hover{ background:var(--danger-tint); box-shadow:none; }
+.btn-success{ --btn-bg: linear-gradient(155deg, #3F9666 0%, var(--success) 60%, #1E5C38 100%); --btn-fg:#fff; }
+.btn-sm{ padding:7px 12px; font-size:13px; border-radius:8px; }
+
+/* ripple */
+.btn .ripple{
+  position:absolute; border-radius:50%; transform:scale(0);
+  background:rgba(255,255,255,.5); animation:ripple .55s var(--ease);
+  pointer-events:none;
+}
+
+/* ============================================================
+   CARDS
+   ============================================================ */
+.card{
+  background:var(--card);
+  border:1px solid var(--line-soft);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+.card-head{
+  padding:20px 26px;
+  border-bottom:1px solid var(--line-soft);
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  flex-wrap:wrap;
+}
+.card-head h2,.card-head h3{ margin:0; font-size:18px; }
+.card-body{ padding:24px 26px; }
+
+/* ============================================================
+   FORMS
+   ============================================================ */
+label{ display:block; font-size:13px; font-weight:600; color:var(--navy); margin-bottom:7px; letter-spacing:.01em; }
+
+/* ============================================================
+   BADGES / STATUS / SEAL (signature element)
+   ============================================================ */
+.badge{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+  padding:4px 10px; border-radius:999px;
+}
+.badge-success{ background:var(--success-tint); color:var(--success); }
+.badge-danger{ background:var(--danger-tint); color:var(--danger); }
+.badge-gold{ background:var(--gold-tint); color:#8A6417; }
+.badge-navy{ background:var(--navy-tint); color:var(--navy); }
+
+/* The wax-seal "stamp" — used for verified / voted / winner states */
+.seal{
+  --seal-size: 84px;
+  width:var(--seal-size); height:var(--seal-size);
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 32% 28%, var(--gold-2), var(--gold) 65%, #93701F 100%);
+  color:#2A1E05;
+  box-shadow:0 8px 20px rgba(185,138,46,.35), inset 0 -3px 6px rgba(0,0,0,.15), inset 0 2px 3px rgba(255,255,255,.4);
+  position:relative;
+  border:3px solid #fff;
+  animation:stamp-in .5s var(--ease) both;
+}
+
+/* ============================================================
+   ANIMATIONS (shared)
+   ============================================================ */
+@keyframes fade-up{
+  from{ opacity:0; transform:translateY(14px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+@keyframes pop-in{
+  from{ opacity:0; transform:scale(.94); }
+  to{ opacity:1; transform:scale(1); }
+}
+@keyframes fade-in{
+  from{ opacity:0; }
+  to{ opacity:1; }
+}
+@keyframes spin{
+  to{ transform:rotate(360deg); }
+}
+@keyframes ripple{
+  from{ transform:scale(0); opacity:.55; }
+  to{ transform:scale(2.6); opacity:0; }
+}
+@keyframes stamp-in{
+  0%{ opacity:0; transform:scale(.5) rotate(-14deg); }
+  70%{ opacity:1; transform:scale(1.08) rotate(3deg); }
+  100%{ opacity:1; transform:scale(1) rotate(0); }
+}
+@keyframes winner-glow{
+  0%,100%{ box-shadow:0 0 0 0 rgba(185,138,46,.35); }
+  50%{ box-shadow:0 0 0 10px rgba(185,138,46,0); }
+}
+
+.reveal-pop{ animation:pop-in .4s var(--ease) both; }
+.stagger > *{ animation:fade-up .5s var(--ease) both; }
+.stagger > *:nth-child(1){ animation-delay:.03s; }
+.stagger > *:nth-child(2){ animation-delay:.09s; }
+.stagger > *:nth-child(3){ animation-delay:.15s; }
+.stagger > *:nth-child(4){ animation-delay:.21s; }
+.stagger > *:nth-child(5){ animation-delay:.27s; }
+.stagger > *:nth-child(6){ animation-delay:.33s; }
+
+/* spinner */
+.spinner{ width:16px; height:16px; border-radius:50%; border:2.4px solid rgba(255,255,255,.4); border-top-color:#fff; animation:spin .7s linear infinite; }
+.spinner-navy{ border:2.4px solid var(--navy-tint); border-top-color:var(--navy); }
+
+/* progress fill (results bars / countdown) */
+.bar-track{ height:10px; border-radius:999px; background:var(--paper-dim); overflow:hidden; }
+
+/* ============================================================
+   AUTH SHELL (otp / admin login)
+   ============================================================ */
+.auth-shell{ flex:1; display:flex; align-items:center; justify-content:center; padding:clamp(16px,4vw,32px) clamp(12px,4vw,18px); }
+.auth-body{ padding:clamp(18px,5vw,28px) clamp(20px,6vw,30px) clamp(20px,5vw,30px); overflow-y:auto; min-height:0; }
+
+/* OTP boxes — fluid sizing so 6 boxes always fit without overflowing
+   narrow phone widths, instead of relying on a single breakpoint */
+.otp-row{ display:flex; gap:clamp(6px,2vw,10px); justify-content:space-between; }
+
+/* alert */
+.alert{ display:flex; gap:10px; padding:13px 15px; border-radius:10px; font-size:13.5px; align-items:flex-start; animation:pop-in .35s var(--ease) both; }
+
+/* ============================================================
+   ELECTION HEADER BAR (shared: voting + results)
+   ============================================================ */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 32px;
+  background:var(--card);
+  border-bottom:1px solid var(--line-soft);
+}
+body.kiosk .topbar{ padding:clamp(10px,1.6vh,16px) 28px; flex:none; }
+.pill-user .avatar{ width:30px; height:30px; border-radius:50%; background:var(--navy-tint); color:var(--navy); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; font-family:'Fraunces',serif; }
+.election-banner .card-body{ display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; padding:clamp(12px,2vh,24px) 26px; }
+
+/* ============================================================
+   CANDIDATE VOTING GRID
+   ============================================================ */
+.vote-wrap{ max-width:1200px; width:100%; margin:0 auto; padding:16px 24px 20px; }
+/* kiosk (smart-board) mode: the whole screen is fixed, so this area
+   fills the remaining height and its own contents scale to fit —
+   no internal scrollbar, ever. */
+body.kiosk .vote-wrap{ flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+.vote-wrap-head{ flex:none; text-align:center; margin-bottom:clamp(8px,1.6vh,16px); }
+.vote-wrap-head h2{ margin:0; font-size:clamp(19px,2.8vh,26px); }
+.vote-wrap-head p{ margin:4px 0 0; font-size:clamp(12.5px,1.7vh,14.5px); }
+
+/* minimal logo watermark — small brand presence without bringing back
+   a full header bar */
+.kiosk-brand{
+  position:fixed; top:14px; left:16px; z-index:40;
+  display:flex; align-items:center; gap:8px;
+  background:#fff; border:1.5px solid var(--line-soft); border-radius:9px;
+  padding:6px 14px 6px 8px; box-shadow:var(--shadow);
+}
+.kiosk-brand img{ height:80px; width:100%; display:block; }
+
+.candidate-grid{
+  --avatar-max: 180px;
+  --avatar-vh: 19vh;
+  --pad-max: 36px;
+  --pad-vh: 3.6vh;
+  --name-max: 21px;
+  --name-vh: 2.6vh;
+  --col-min: 220px;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(clamp(var(--col-min),26vw,340px),1fr));
+  grid-auto-rows:max-content;
+  align-content:center;
+  justify-content:center;
+  gap:clamp(12px,2.6vh,30px);
+  margin-top:clamp(10px,1.8vh,18px);
+}
+body.kiosk .candidate-grid{ flex:1; min-height:0; overflow:hidden; }
+
+/* candidate identity: two colors, strictly alternating — keeps every
+   card the same clean white/neutral style, only the photo ring changes */
+.candidate-card{ --accent: var(--navy-2); }
+.candidate-card:nth-child(even){ --accent: var(--gold); }
+
+.candidate-card{
+  background:#fff;
+  border:1.5px solid var(--line-soft);
+  border-radius:20px;
+  padding:clamp(14px,var(--pad-vh),var(--pad-max)) clamp(14px,2.2vw,28px);
+  text-align:center; position:relative; transition:border-color .18s, box-shadow .18s, transform .18s;
+  display:flex; flex-direction:column; align-items:center; min-height:0;
+  box-shadow:var(--shadow);
+}
+.candidate-card:hover{
+  transform:translateY(-4px);
+  box-shadow:var(--shadow-lg);
+  border-color:var(--accent);
+}
+.candidate-avatar{
+  width:clamp(36px,var(--avatar-vh),var(--avatar-max)); height:clamp(36px,var(--avatar-vh),var(--avatar-max)); border-radius:50%; margin:0 auto clamp(4px,var(--pad-vh),20px);
+  background:linear-gradient(155deg,var(--navy-tint),#fff);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Fraunces',serif; font-weight:600; font-size:clamp(16px,4.4vh,38px); color:#fff;
+  border:4px solid #fff;
+  box-shadow:0 0 0 5px var(--accent), var(--shadow);
+  position:relative; overflow:hidden; flex:none;
+}
+.candidate-avatar img{ width:100%; height:100%; object-fit:cover; border-radius:50%; display:block; }
+.candidate-avatar .avatar-fallback{
+  position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+  font-family:'Fraunces',serif; font-weight:600; font-size:clamp(16px,4.4vh,38px); color:#fff;
+  background:var(--accent);
+}
+.candidate-card h3{ font-size:clamp(11px,var(--name-vh),var(--name-max)); margin:0 0 clamp(4px,var(--pad-vh),20px); flex:none; color:var(--navy); }
+.candidate-vote-btn{
+  width:100%; max-width:220px; flex:none; margin-top:auto;
+  padding-top:clamp(6px,var(--pad-vh),14px); padding-bottom:clamp(6px,var(--pad-vh),14px);
+  font-size:clamp(12px,var(--name-vh),15.5px);
+}
+
+/* voted confirmation */
+.voted-state{ width:100%; text-align:center; padding:20px; position:relative; }
+body.kiosk .voted-state{
+  flex:1; min-height:0; display:flex; align-items:center; justify-content:center;
+}
+.voted-card{
+  width:100%; max-width:600px; background:#fff; border:1px solid var(--line-soft); border-radius:22px;
+  box-shadow:var(--shadow-lg); padding:clamp(28px,5vh,48px) clamp(24px,4vw,44px);
+}
+.voted-photo-wrap{ position:relative; width:fit-content; margin:0 auto; }
+.voted-photo{
+  width:clamp(96px,16vh,140px); height:clamp(96px,16vh,140px); border-radius:50%; overflow:hidden;
+  border:4px solid #fff; box-shadow:0 0 0 5px var(--gold), var(--shadow-lg); position:relative;
+  animation:stamp-in .55s var(--ease) both;
+}
+.voted-photo img{ width:100%; height:100%; object-fit:cover; display:block; }
+.voted-photo .avatar-fallback{
+  position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+  font-family:'Fraunces',serif; font-weight:600; font-size:clamp(24px,4.4vh,36px); color:#fff;
+  background:var(--gold);
+}
+.voted-check-badge{
+  position:absolute; bottom:-4px; right:-4px; width:36px; height:36px; border-radius:50%;
+  background:var(--success); color:#fff; border:3px solid #fff;
+  display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow);
+  animation:pop-in .4s var(--ease) .3s both;
+}
+.voted-check-badge svg{ width:17px; height:17px; }
+.voted-card h2{ margin-top:2px; }
+.voted-divider{ height:1px; background:var(--line-soft); margin:clamp(18px,3vh,26px) 0; }
+.voted-meta-row{ display:flex; flex-wrap:wrap; justify-content:center; gap:clamp(16px,3vw,32px); text-align:left; }
+.voted-meta-item{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.voted-meta-item .lbl{ font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); }
+.voted-meta-item .val{ font-size:13.5px; font-weight:600; color:var(--navy); max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.voted-meta-item .val.mono{ font-family:'IBM Plex Mono',monospace; }
+.hint{ color:var(--ink-soft); font-size:13px; }
+.mono{ font-family:'IBM Plex Mono',monospace; }
+
+/* ============================================================
+   RESULTS
+   ============================================================ */
+.results-wrap{ max-width:920px; margin:0 auto; padding:22px 20px 60px; display:flex; flex-direction:column; gap:20px; }
+
+/* ============================================================
+   ADMIN LAYOUT
+   ============================================================ */
+.admin-shell{ display:flex; min-height:100vh; }
+
+/* collapsed rail (desktop) */
+.sidebar.collapsed{ width:76px; }
+.sidebar.collapsed .sidebar-user .avatar{ margin:0; }
+.sidebar-user .avatar{ width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,.14); display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif; font-weight:600; color:#fff; font-size:12px; flex:none; }
+
+/* hamburger — toggles the sidebar on narrow viewports */
+.hamburger-btn{
+  display:none; flex:none; width:38px; height:38px; border-radius:9px; border:1.5px solid var(--line);
+  background:#fff; cursor:pointer; align-items:center; justify-content:center; color:var(--navy);
+}
+
+/* section switching */
+.admin-section{ display:none; animation:fade-up .4s var(--ease) both; }
+
+/* table */
+.table-wrap{ overflow-x:auto; }
+tbody td{ padding:13px 16px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
+tbody tr{ transition:background .12s; }
+tbody tr:hover{ background:var(--paper-dim); }
+
+/* row action menu (hamburger) */
+.action-menu{ position:relative; display:inline-block; }
+
+/* stat cards row on dashboard */
+.kpi-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:16px; margin-bottom:24px; }
+
+/* modal */
+.modal-backdrop{
+  position:fixed; inset:0; background:rgba(20,26,41,.5); backdrop-filter:blur(2px);
+  display:none; align-items:center; justify-content:center; padding:20px; z-index:100;
+  animation:fade-in .2s var(--ease) both;
+}
+.modal-backdrop.open{ display:flex; }
+.modal{
+  width:100%; max-width:580px; background:var(--card); border-radius:16px; box-shadow:var(--shadow-lg);
+  max-height:calc(100vh - 40px); overflow:hidden; animation:pop-in .28s var(--ease) both;
+  display:flex; flex-direction:column;
+}
+.modal-head{ padding:16px 24px; border-bottom:1px solid var(--line-soft); display:flex; align-items:center; justify-content:space-between; flex:none; }
+.modal-head h3{ font-size:17px; margin:0; }
+.modal-close{ background:none; border:none; cursor:pointer; color:var(--ink-soft); width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; }
+.modal-close:hover{ background:var(--paper-dim); color:var(--ink); }
+.modal-body{ padding:18px 24px; overflow-y:auto; }
+.modal-foot{ padding:14px 24px; border-top:1px solid var(--line-soft); display:flex; justify-content:flex-end; gap:10px; flex:none; }
+.modal .field{ margin-bottom:12px; }
+.modal label{ margin-bottom:5px; }
+.modal input,.modal select,.modal textarea{ padding:10px 13px; }
+
+/* dropzone for csv import */
+.dropzone{
+  border:1.5px dashed var(--line); border-radius:12px; padding:30px 20px; text-align:center; background:var(--paper-dim);
+  transition:.15s;
+}
+
+/* toast */
+.toast-stack{ position:fixed; top:20px; right:20px; display:flex; flex-direction:column; gap:10px; z-index:200; }
+.toast{
+  background:var(--navy); color:#fff; padding:11px 18px; border-radius:10px; font-size:13.5px; font-weight:600;
+  box-shadow:var(--shadow-lg); animation:fade-up .3s var(--ease) both;
+}
+
+/* tabs (students/events) */
+.seg-tabs{ display:inline-flex; background:var(--paper-dim); border-radius:10px; padding:4px; gap:2px; }
+
+/* pagination */
+.pagination{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding-top:16px; margin-top:4px; border-top:1px solid var(--line-soft); }
+
+/* ---------- winner announcement popup ---------- */
+.winner-modal{
+  position:relative; overflow:visible !important; border:2px solid var(--gold);
+  animation:pop-in .4s var(--ease) both, winner-glow 2.2s ease-in-out .4s infinite;
+}
+body.kiosk footer.legal{ padding:clamp(8px,1.4vh,16px) 20px; }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+/* FIX: the original had an empty `@media (max-width:760px){}` block
+   followed by these rules OUTSIDE of it, so they applied at every
+   width, not just small ones. They now live inside the query. */
+@media (max-width:760px){
+  .hamburger-btn{ display:flex; }
+  .card-body{ padding:20px; }
+  .card-head{ padding:16px 20px; }
+}
+
+@media (max-width:600px){
+  /* election header bar (vote + results): let branding wrap instead of
+     squeezing or overflowing off-screen */
+  .topbar{ flex-wrap:wrap; row-gap:10px; }
+  .pill-user span:not(.avatar){ max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .election-banner .card-body{ flex-direction:column; align-items:flex-start; gap:10px; }
+
+  /* results: vote-distribution chart needs more breathing room on phones */
+  .chart-col{ gap:10px; height:160px; padding:0; }
+
+  /* results: candidate-wise breakdown collapses the bar onto its own row */
+  .rank-row{ flex-wrap:wrap; row-gap:8px; }
+
+  /* admin dashboard: KPI + stat cards go full-width single column */
+  .kpi-row,.stat-row{ grid-template-columns:1fr 1fr; }
+}

@@ -89,10 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['csv_file'])) {
                         $row_error = true;
                         $error_messages[] = "Faculty is empty.";
                     }
-                    if (empty($email)) {
-                        $row_error = true;
-                        $error_messages[] = "Email is empty.";
-                    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        // Email is optional now — only validate format if one was actually provided
                         $row_error = true;
                         $error_messages[] = "Invalid email format.";
                     }
@@ -125,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['csv_file'])) {
                             'faculty' => $faculty,
                             'semester' => (int)$semester_val,
                             'phone' => $phone,
-                            'email' => $email
+                            'email' => ($email === '' ? null : $email)
                         ];
                     }
                 }

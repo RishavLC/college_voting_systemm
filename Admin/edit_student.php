@@ -34,33 +34,50 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $semester = intval($_POST['student_semester']);
     $phone = trim($_POST['student_phone']);
     $email = trim($_POST['student_email']);
+    $email = $email === '' ? null : $email; // optional — store NULL if blank
     $voting_status = isset($_POST['voting_status']) ? 1 : 0;
     $is_candidate = isset($_POST['is_candidate']) ? 1 : 0;
 
-    if (empty($name) || empty($batch) || empty($faculty) || $semester < 1 || $semester > 8 || empty($email)) {
-        $error = "All required fields (Name, Batch, Faculty, Semester, Email) must be filled correctly.";
+    // Validate
+    if (empty($name) || empty($batch) || empty($faculty) || $semester < 1 || $semester > 8) {
+        $error = "All required fields (Name, Batch, Faculty, Semester) must be filled correctly.";
+    } elseif ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = "Invalid email format.";
     } else {
-        // FIXED: type string must match 9 variables
-        $update = $conn->prepare("UPDATE student SET 
-            student_name = ?, 
-            student_batch = ?, 
-            student_faculty = ?, 
-            student_semester = ?, 
-            student_phone = ?, 
-            student_email = ?, 
-            voting_status = ?, 
-            is_candidate = ? 
-            WHERE student_id = ?");
-        $update->bind_param("sssisiiii", $name, $batch, $faculty, $semester, $phone, $email, $voting_status, $is_candidate, $student_id);
-        if ($update->execute()) {
-            $success = "Student updated successfully!";
-            // Refresh student data
-            $stmt = $conn->prepare("SELECT * FROM student WHERE student_id = ?");
-            $stmt->bind_param("i", $student_id);
-            $stmt->execute();
-            $student = $stmt->get_result()->fetch_assoc();
+        // Check if email already used by another student (only matters
+        // if an email was actually entered — NULLs never conflict)
+        $emailTaken = false;
+        if ($email !== null) {
+            $check = $conn->prepare("SELECT student_id FROM student WHERE student_email = ? AND student_id != ?");
+            $check->bind_param("si", $email, $student_id);
+            $check->execute();
+            $emailTaken = $check->get_result()->num_rows > 0;
+        }
+        if ($emailTaken) {
+            $error = "This email is already registered by another student.";
         } else {
-            $error = "Database error: " . $conn->error;
+            // ✅ FIXED: correct type string: "sssissiii" (9 specifiers)
+            $update = $conn->prepare("UPDATE student SET 
+                student_name = ?, 
+                student_batch = ?, 
+                student_faculty = ?, 
+                student_semester = ?, 
+                student_phone = ?, 
+                student_email = ?, 
+                voting_status = ?, 
+                is_candidate = ? 
+                WHERE student_id = ?");
+            $update->bind_param("sssissiii", $name, $batch, $faculty, $semester, $phone, $email, $voting_status, $is_candidate, $student_id);
+            if ($update->execute()) {
+                $success = "Student updated successfully!";
+                // Refresh student data
+                $stmt = $conn->prepare("SELECT * FROM student WHERE student_id = ?");
+                $stmt->bind_param("i", $student_id);
+                $stmt->execute();
+                $student = $stmt->get_result()->fetch_assoc();
+            } else {
+                $error = "Database error: " . $conn->error;
+            }
         }
     }
 }
@@ -106,8 +123,8 @@ include 'header.php';
                     <input type="text" name="student_phone" class="form-control" value="<?= htmlspecialchars($student['student_phone']) ?>">
                 </div>
                 <div class="col-12">
-                    <label>Email *</label>
-                    <input type="email" name="student_email" class="form-control" value="<?= htmlspecialchars($student['student_email']) ?>" required>
+                    <label>Email <span class="text-muted" style="text-transform:none;font-weight:500;">(optional)</span></label>
+                    <input type="email" name="student_email" class="form-control" value="<?= htmlspecialchars($student['student_email'] ?? '') ?>">
                 </div>
             </div>
             <div class="d-flex flex-wrap gap-4 mt-3">

@@ -10,7 +10,7 @@
 //    (1 balance point = 1 SMS)
 // ============================================================
 
-define('SMS_API_KEY', 'PUT_YOUR_VERIFIEDSMS_API_KEY_HERE');
+define('SMS_API_KEY', 'VERIFIEDSMScddc0f3ad2d8929d2d06159333295c0d');
 define('SMS_API_URL', 'https://verifiedsms.com/api/v1/send.php');
 
 // Set this to true while you're setting things up so student_verify.php

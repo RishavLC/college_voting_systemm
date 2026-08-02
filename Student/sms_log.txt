@@ -28,3 +28,54 @@ OTP for 9840747919: 775046
 OTP for 9800000000: 975272
 OTP for 9800000000: 036724
 OTP for 9822222222: 047963
+2026-07-28 06:12:58 | dest=+9779862886496 | otp=935810 | http=400 | response={"status":"error","message":"Invalid API key format","timestamp":1785211978}
+2026-07-28 06:13:06 | dest=+9779862886496 | otp=376466 | http=400 | response={"status":"error","message":"Invalid API key format","timestamp":1785211986}
+2026-07-28 06:13:10 | dest=+9779862886496 | otp=442034 | http=400 | response={"status":"error","message":"Invalid API key format","timestamp":1785211990}
+2026-07-28 06:16:58 | dest=+9779862886496 | otp=297692 | http=400 | response={"status":"error","message":"Invalid API key format","timestamp":1785212217}
+2026-07-28 06:19:00 | dest=+9779862886496 | otp=008704 | http=401 | response={"status":"error","message":"Invalid or inactive API key","timestamp":1785212340}
+2026-07-28 06:19:03 | dest=+9779862886496 | otp=997200 | http=401 | response={"status":"error","message":"Invalid or inactive API key","timestamp":1785212343}
+2026-07-28 06:24:33 | dest=+9779862886496 | otp=051791 | http=404 | response=<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html><head>
+<title>404 Not Found</title>
+</head><body>
+<h1>Not Found</h1>
+<p>The requested URL was not found on this server.</p>
+<hr>
+<address>Apache/2.4.41 (Ubuntu) Server at api.verifiedsms.com Port 443</address>
+</body></html>
+
+2026-07-28 06:25:19 | dest=+9779862886496 | otp=179235 | http=404 | response=<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html><head>
+<title>404 Not Found</title>
+</head><body>
+<h1>Not Found</h1>
+<p>The requested URL was not found on this server.</p>
+<hr>
+<address>Apache/2.4.41 (Ubuntu) Server at api.verifiedsms.com Port 443</address>
+</body></html>
+
+2026-07-28 06:33:19 | dest=+9779862886496 | otp=742474 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785213199}
+2026-07-28 06:37:43 | dest=+9779862886496 | otp=526222 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785213463}
+2026-07-28 06:38:23 | dest=+9779862886496 | otp=061458 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785213502}
+2026-07-28 06:46:06 | dest=+9779862886496 | otp=360663 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785213966}
+2026-07-28 06:46:22 | dest=+9779862886496 | otp=279490 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785213981}
+2026-07-28 06:46:41 | dest=+9779862886496 | otp=435391 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785214001}
+2026-07-28 06:46:50 | dest=+9779862886496 | otp=257010 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785214010}
+2026-07-28 06:47:02 | dest=+9779862886496 | otp=612454 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785214022}
+2026-07-28 06:56:03 | dest=+9779862886496 | otp=449659 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785214563}
+2026-07-28 06:56:19 | dest=+9779862886496 | otp=231208 | http=502 | response={"status":"error","message":"SMS gateway error: NTC: Error 1507: Insufficient credit","timestamp":1785214579}
+2026-07-28 07:22:55 | dest=+9779862886496 | otp=261585 | http=500 | response=
+2026-07-28 07:34:58 | dest=+9779862886496 | otp=161619 | http=500 | response=
+2026-07-28 07:35:10 | dest=+9779862886496 | otp=039499 | http=500 | response=
+2026-07-28 07:35:15 | dest=+9779862886496 | otp=300677 | http=500 | response=
+2026-07-28 07:35:16 | dest=+9779862886496 | otp=458672 | http=500 | response=
+2026-07-28 07:35:17 | dest=+9779862886496 | otp=920492 | http=500 | response=
+2026-07-28 07:35:18 | dest=+9779862886496 | otp=038139 | http=500 | response=
+2026-07-28 07:35:18 | dest=+9779862886496 | otp=800398 | http=500 | response=
+2026-07-28 07:35:19 | dest=+9779862886496 | otp=449337 | http=500 | response=
+2026-07-28 07:35:20 | dest=+9779862886496 | otp=616566 | http=500 | response=
+2026-07-28 07:35:29 | dest=+9779862886496 | otp=976540 | http=500 | response=
+2026-07-28 07:35:33 | dest=+9779862886496 | otp=688784 | http=500 | response=
+2026-07-28 07:35:59 | dest=+9779862886496 | otp=546382 | http=500 | response=
+2026-07-28 07:49:00 | dest=+9779862886496 | otp=463035 | http=500 | response=
+2026-07-28 13:34:27 | dest=+9779862887116 | otp=241980 | http=401 | response={"status":"error","message":"Invalid or inactive API key","timestamp":1785238467}

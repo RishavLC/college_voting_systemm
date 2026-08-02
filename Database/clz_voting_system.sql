@@ -141,7 +141,7 @@ CREATE TABLE `student` (
   `student_faculty` varchar(50) NOT NULL,
   `student_semester` int(11) NOT NULL CHECK (`student_semester` between 1 and 8),
   `student_phone` varchar(15) DEFAULT NULL,
-  `student_email` varchar(100) NOT NULL,
+  `student_email` varchar(100) DEFAULT NULL,
   `student_otp` varchar(6) DEFAULT NULL,
   `voting_status` tinyint(1) DEFAULT 0,
   `is_candidate` tinyint(1) DEFAULT 0,

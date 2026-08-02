@@ -219,7 +219,18 @@ document.addEventListener('DOMContentLoaded', function() {
             method: 'POST',
             body: formData
         })
-        .then(response => response.json())
+        .then(response => response.text().then(text => {
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                // Server didn't return valid JSON at all — show the raw
+                // response so the actual PHP error is visible instead of
+                // a generic "network error".
+                throw new Error('Server did not return valid JSON. Raw response: ' + text.substring(0, 500));
+            }
+            return data;
+        }))
         .then(data => {
             if (data.success) {
                 feedback.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
@@ -227,11 +238,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     location.reload();
                 }, 1500);
             } else {
-                feedback.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                let msg = data.message || 'Something went wrong.';
+                if (data.debug) msg += `<br><small class="text-muted">${data.debug}</small>`;
+                feedback.innerHTML = `<div class="alert alert-danger">${msg}</div>`;
             }
         })
         .catch(error => {
-            feedback.innerHTML = `<div class="alert alert-danger">Network error. Please try again.</div>`;
+            feedback.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
         })
         .finally(() => {
             submitBtn.disabled = false;
