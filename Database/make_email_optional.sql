@@ -8,9 +8,8 @@
 ALTER TABLE `student`
   MODIFY `student_email` varchar(100) DEFAULT NULL;
 
--- NOTE: the UNIQUE key on student_email (uc student_email) is left in
--- place and still works correctly with this change — MySQL's UNIQUE
--- constraint allows multiple rows to have a NULL value; it only
--- enforces uniqueness among the non-NULL values. So many students can
--- now have no email at all, while any email that IS entered still has
--- to be unique.
+-- NOTE: the UNIQUE key on student_email is left in place and still
+-- works correctly — MySQL's UNIQUE constraint allows multiple rows to
+-- have a NULL value; it only enforces uniqueness among non-NULL
+-- values. So many students can now have no email at all, while any
+-- email that IS entered still has to be unique.
