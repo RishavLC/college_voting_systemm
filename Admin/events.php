@@ -50,7 +50,25 @@ function statusBadge($status) {
                     <td><?= statusBadge($row['election_status']) ?></td>
                     <td class="text-end">
                         <div class="d-flex gap-1 justify-content-end flex-wrap">
+                            <!-- Status action buttons -->
+                            <?php if ($row['election_status'] === 'upcoming'): ?>
+                                <a href="update_election_status.php?id=<?= $row['election_id'] ?>&action=start" 
+                                   class="btn btn-sm btn-success" 
+                                   title="Start Election"
+                                   onclick="return confirm('Are you sure you want to start this election? It will become active and students can vote.')">
+                                    <i class="bi bi-play-fill"></i> Start
+                                </a>
+                            <?php elseif ($row['election_status'] === 'active'): ?>
+                                <a href="update_election_status.php?id=<?= $row['election_id'] ?>&action=close" 
+                                   class="btn btn-sm btn-danger" 
+                                   title="Close Election"
+                                   onclick="return confirm('Are you sure you want to close this election? Voting will be disabled.')">
+                                    <i class="bi bi-stop-fill"></i> Close
+                                </a>
+                            <?php endif; ?>
+                            <!-- Edit -->
                             <a href="edit_event.php?id=<?= $row['election_id'] ?>" class="btn btn-sm btn-warning" title="Edit"><i class="bi bi-pencil-fill"></i></a>
+                            <!-- Delete -->
                             <a href="delete_event.php?id=<?= $row['election_id'] ?>" class="btn btn-sm btn-danger" title="Delete" onclick="return confirm('Delete this election?')"><i class="bi bi-trash-fill"></i></a>
                         </div>
                     </td>

@@ -33,7 +33,7 @@ include 'header.php';
                 <div class="col-md-6"><label>Date</label><input type="date" name="election_date" class="form-control" required></div>
                 <div class="col-md-6"><label>Semester</label><input type="number" name="election_semester" class="form-control" min="1" max="8" required></div>
                 <div class="col-md-6"><label>Batch</label><input type="text" name="election_batch" class="form-control" required></div>
-                <div class="col-md-6"><label>Faculty</label><input type="text" name="election_faculty" class="form-control" required></div>
+                <div class="col-md-6"><label>Program</label><input type="text" name="election_faculty" class="form-control" required></div>
                 <div class="col-12">
                     <label>Status</label>
                     <select name="election_status" class="form-select">

@@ -37,7 +37,7 @@ include 'header.php';
                 <div class="col-md-6"><label>Student ID</label><input type="number" name="student_id" class="form-control" required></div>
                 <div class="col-md-6"><label>Name</label><input type="text" name="student_name" class="form-control" required></div>
                 <div class="col-md-6"><label>Batch</label><input type="text" name="student_batch" class="form-control" required></div>
-                <div class="col-md-6"><label>Faculty</label><input type="text" name="student_faculty" class="form-control" required></div>
+                <div class="col-md-6"><label>Program</label><input type="text" name="student_faculty" class="form-control" required></div>
                 <div class="col-md-6"><label>Semester</label><input type="number" name="student_semester" class="form-control" min="1" max="8" required></div>
                 <div class="col-md-6"><label>Phone</label><input type="text" name="student_phone" class="form-control"></div>
                 <div class="col-12"><label>Email <span class="text-muted" style="text-transform:none;font-weight:500;">(optional)</span></label><input type="email" name="student_email" class="form-control"></div>

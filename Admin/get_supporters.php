@@ -25,16 +25,60 @@ if ($result->num_rows == 0) {
 }
 $student = $result->fetch_assoc();
 
-// Fetch other students with same faculty, batch, semester, excluding self and already candidates
-$query = "SELECT student_id, student_name FROM student 
-          WHERE student_faculty = ? 
-          AND student_batch = ? 
-          AND student_semester = ? 
-          AND student_id != ? 
-          AND is_candidate = 0 
-          ORDER BY student_name";
+// Find the active election for this batch/faculty/semester
+$election_query = "SELECT election_id FROM election 
+                   WHERE election_faculty = ? AND election_batch = ? AND election_semester = ? 
+                   AND election_status IN ('upcoming', 'active') LIMIT 1";
+$stmt = $conn->prepare($election_query);
+$stmt->bind_param("ssi", $student['student_faculty'], $student['student_batch'], $student['student_semester']);
+$stmt->execute();
+$election_result = $stmt->get_result();
+if ($election_result->num_rows == 0) {
+    echo json_encode(['success' => false, 'message' => 'No election found for this batch/faculty/semester.']);
+    exit();
+}
+$election = $election_result->fetch_assoc();
+$election_id = $election['election_id'];
+
+// Fetch students who are NOT:
+//   - already candidates in this election
+//   - already supporter1 in this election
+//   - already supporter2 in this election
+//   - already proposer in this election
+// And share the same faculty/batch/semester, excluding the candidate themselves.
+$query = "
+    SELECT s.student_id, s.student_name
+    FROM student s
+    WHERE s.student_faculty = ? 
+      AND s.student_batch = ? 
+      AND s.student_semester = ?
+      AND s.student_id != ?
+      AND s.student_id NOT IN (
+          SELECT student_id FROM candidate WHERE election_id = ?
+      )
+      AND s.student_id NOT IN (
+          SELECT supporter1 FROM candidate WHERE election_id = ? AND supporter1 IS NOT NULL
+      )
+      AND s.student_id NOT IN (
+          SELECT supporter2 FROM candidate WHERE election_id = ? AND supporter2 IS NOT NULL
+      )
+      AND s.student_id NOT IN (
+          SELECT proposer FROM candidate WHERE election_id = ? AND proposer IS NOT NULL
+      )
+    ORDER BY s.student_name
+";
 $stmt = $conn->prepare($query);
-$stmt->bind_param("ssii", $student['student_faculty'], $student['student_batch'], $student['student_semester'], $student_id);
+$stmt->bind_param(
+    "ssiiiiii",
+    $student['student_faculty'],
+    $student['student_batch'],
+    $student['student_semester'],
+    $student_id,
+    $election_id,
+    $election_id,
+    $election_id,
+    $election_id
+);
 $stmt->execute();
 $supporters = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 

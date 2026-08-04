@@ -1,17 +1,69 @@
 <?php
 require_once '../Database/db_connect.php';
 
-// Fetch filters
+// Fetch filters + search
 $batch = $_GET['batch'] ?? '';
 $faculty = $_GET['faculty'] ?? '';
 $semester = $_GET['semester'] ?? '';
+$search = $_GET['search'] ?? '';
 
-$sql = "SELECT * FROM student WHERE 1=1";
-if ($batch) $sql .= " AND student_batch = '$batch'";
-if ($faculty) $sql .= " AND student_faculty = '$faculty'";
-if ($semester) $sql .= " AND student_semester = '$semester'";
+// Modified query to include candidate status with roles
+$sql = "SELECT s.*, 
+        CASE 
+            WHEN c.candidate_id IS NOT NULL THEN 'candidate'
+            WHEN cs1.candidate_id IS NOT NULL THEN 'supporter1'
+            WHEN cs2.candidate_id IS NOT NULL THEN 'supporter2'
+            WHEN cp.candidate_id IS NOT NULL THEN 'proposer'
+            ELSE 'none'
+        END as candidate_role
+        FROM student s
+        LEFT JOIN candidate c ON s.student_id = c.student_id
+        LEFT JOIN candidate cs1 ON s.student_id = cs1.supporter1
+        LEFT JOIN candidate cs2 ON s.student_id = cs2.supporter2
+        LEFT JOIN candidate cp ON s.student_id = cp.proposer
+        WHERE 1=1";
+
+if ($batch) $sql .= " AND s.student_batch = '$batch'";
+if ($faculty) $sql .= " AND s.student_faculty = '$faculty'";
+if ($semester) $sql .= " AND s.student_semester = '$semester'";
+if ($search) {
+    $searchEsc = $conn->real_escape_string($search);
+    $sql .= " AND (s.student_name LIKE '%$searchEsc%' 
+                  OR s.student_email LIKE '%$searchEsc%' 
+                  OR s.student_id = '$searchEsc')";
+}
+// Group by to avoid duplicates
+$sql .= " GROUP BY s.student_id";
 $result = $conn->query($sql);
 ?>
+<style>
+    /* Sticky header for the table */
+    .sticky-header thead th {
+        position: sticky;
+        top: 0;
+        background: #f7f7fc;
+        z-index: 10;
+        box-shadow: inset 0 -2px 0 var(--border, #e7e6f3);
+    }
+    .table-scroll {
+        max-height: 500px;
+        overflow-y: auto;
+        border-radius: var(--radius-md, 8px);
+        border: 1px solid var(--border, #e7e6f3);
+    }
+    .table-scroll table {
+        margin-bottom: 0;
+    }
+    .table-scroll .table thead th {
+        background: #f7f7fc;
+    }
+    /* Status badge styles */
+    .role-badge {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.5rem;
+    }
+</style>
+
 <div class="card shadow">
     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span><i class="bi bi-people-fill me-2"></i>Students</span>
@@ -22,11 +74,11 @@ $result = $conn->query($sql);
         </div>
     </div>
     <div class="card-body">
-        <!-- Filters -->
+        <!-- Filters + Search -->
         <form method="GET" action="home.php" class="row g-2 mb-3">
             <input type="hidden" name="section" value="students">
             <div class="col-md-3">
-                <input type="text" name="batch" class="form-control" placeholder="Batch (e.g., 2022-2026)" value="<?= htmlspecialchars($batch) ?>">
+                <input type="text" name="batch" class="form-control" placeholder="Batch" value="<?= htmlspecialchars($batch) ?>">
             </div>
             <div class="col-md-3">
                 <input type="text" name="faculty" class="form-control" placeholder="Faculty" value="<?= htmlspecialchars($faculty) ?>">
@@ -38,63 +90,119 @@ $result = $conn->query($sql);
                 <button type="submit" class="btn btn-secondary"><i class="bi bi-funnel"></i> Filter</button>
                 <a href="home.php?section=students" class="btn btn-outline-secondary">Reset</a>
             </div>
+            <!-- Search row -->
+            <div class="col-12 mt-2">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" name="search" class="form-control" placeholder="Search by name, email, or student ID" value="<?= htmlspecialchars($search) ?>">
+                    <button type="submit" class="btn btn-primary">Search</button>
+                </div>
+            </div>
         </form>
 
-        <div class="table-responsive">
-        <table class="table table-bordered table-striped table-hover align-middle">
-            <thead>
-                <tr>
-                    <th>ID</th><th>Name</th><th>Batch</th><th>Faculty</th><th>Semester</th>
-                    <th>Phone</th><th>Email</th><th>Voted</th><th>Candidate</th><th>Present</th>
-                    <th class="text-end">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-            <?php if ($result && $result->num_rows > 0): ?>
-                <?php while($row = $result->fetch_assoc()): ?>
-                <tr>
-                    <td><?= $row['student_id'] ?></td>
-                    <td class="fw-semibold"><?= htmlspecialchars($row['student_name']) ?></td>
-                    <td><?= htmlspecialchars($row['student_batch']) ?></td>
-                    <td><?= htmlspecialchars($row['student_faculty']) ?></td>
-                    <td><?= $row['student_semester'] ?></td>
-                    <td><?= htmlspecialchars($row['student_phone']) ?></td>
-                    <td><?= htmlspecialchars($row['student_email']) ?></td>
-                    <td><span class="badge bg-<?= $row['voting_status'] ? 'success' : 'secondary' ?>"><?= $row['voting_status'] ? 'Yes' : 'No' ?></span></td>
-                    <td><span class="badge bg-<?= $row['is_candidate'] ? 'primary' : 'light text-dark' ?>"><?= $row['is_candidate'] ? 'Yes' : 'No' ?></span></td>
-                    <td>
-                        <?php if ($row['is_present']): ?>
-                            <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Present</span>
-                        <?php else: ?>
-                            <span class="badge bg-secondary"><i class="bi bi-clock"></i> Absent</span>
-                        <?php endif; ?>
-                    </td>
-                    <td class="text-end">
-                        <div class="d-flex gap-1 justify-content-end flex-wrap">
-                            <?php if (!$row['is_present']): ?>
-                                <a href="mark_present.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-success" title="Mark Present"><i class="bi bi-check2-circle"></i></a>
+        <!-- Table -->
+        <div class="table-scroll">
+            <table class="table table-bordered table-striped table-hover align-middle sticky-header">
+                <thead>
+                    <tr>
+                        <th>ID</th><th>Name</th><th>Batch</th><th>Faculty</th><th>Semester</th>
+                        <th>Phone</th><th>Email</th><th>Voted</th><th>Candidate</th><th>Present</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if ($result && $result->num_rows > 0): ?>
+                    <?php while($row = $result->fetch_assoc()): ?>
+                    <?php 
+                    // Determine if student is already a candidate, supporter, or proposer
+                    $isCandidate = $row['is_candidate'] == 1;
+                    $candidateRole = $row['candidate_role'] ?? 'none';
+                    
+                    // Check if student is involved in any election role
+                    $isInvolved = ($candidateRole != 'none');
+                    
+                    // Get role label for display
+                    $roleLabel = '';
+                    $roleBadgeClass = '';
+                    switch($candidateRole) {
+                        case 'candidate':
+                            $roleLabel = 'Candidate';
+                            $roleBadgeClass = 'bg-primary';
+                            break;
+                        case 'supporter1':
+                        case 'supporter2':
+                            $roleLabel = 'Supporter';
+                            $roleBadgeClass = 'bg-info';
+                            break;
+                        case 'proposer':
+                            $roleLabel = 'Proposer';
+                            $roleBadgeClass = 'bg-warning text-dark';
+                            break;
+                        default:
+                            $roleLabel = '';
+                            $roleBadgeClass = '';
+                    }
+                    ?>
+                    <tr>
+                        <td><?= $row['student_id'] ?></td>
+                        <td class="fw-semibold">
+                            <?= htmlspecialchars($row['student_name']) ?>
+                            <?php if ($isInvolved): ?>
+                                <span class="badge <?= $roleBadgeClass ?> role-badge ms-1"><?= $roleLabel ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?= htmlspecialchars($row['student_batch']) ?></td>
+                        <td><?= htmlspecialchars($row['student_faculty']) ?></td>
+                        <td><?= $row['student_semester'] ?></td>
+                        <td><?= htmlspecialchars($row['student_phone']) ?></td>
+                        <td><?= htmlspecialchars($row['student_email']) ?></td>
+                        <td><span class="badge bg-<?= $row['voting_status'] ? 'success' : 'secondary' ?>"><?= $row['voting_status'] ? 'Yes' : 'No' ?></span></td>
+                        <td><span class="badge bg-<?= $row['is_candidate'] ? 'primary' : 'light text-dark' ?>"><?= $row['is_candidate'] ? 'Yes' : 'No' ?></span></td>
+                        <td>
+                            <?php if ($row['is_present']): ?>
+                                <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Present</span>
                             <?php else: ?>
-                                <a href="mark_absent.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-secondary" title="Mark Absent" onclick="return confirm('Mark this student as absent again?')"><i class="bi bi-x-circle"></i></a>
+                                <span class="badge bg-secondary"><i class="bi bi-clock"></i> Absent</span>
                             <?php endif; ?>
-                            <a href="edit_student.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-warning" title="Edit"><i class="bi bi-pencil-fill"></i></a>
-                            <a href="delete_student.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-danger" title="Delete" onclick="return confirm('Delete this student?')"><i class="bi bi-trash-fill"></i></a>
-                            <?php if (!$row['is_candidate']): ?>
-                                <!-- Trigger modal -->
-                                <button type="button" class="btn btn-sm btn-success" title="Mark as Candidate" 
-                                        data-bs-toggle="modal" data-bs-target="#candidateModal" 
-                                        data-student-id="<?= $row['student_id'] ?>">
-                                    <i class="bi bi-star-fill"></i>
-                                </button>
-                            <?php endif; ?>
-                        </div>
-                    </td>
-                </tr>
-                <?php endwhile; ?>
-            <?php else: ?>
-                <tr><td colspan="11" class="text-center text-muted py-4"><i class="bi bi-inbox display-6 d-block mb-2"></i>No students found.</td></tr>
-            <?php endif; ?>
-            </tbody>
-        </table>
+                        </td>
+                        <td class="text-end">
+                            <div class="d-flex gap-1 justify-content-end flex-wrap">
+                                <?php if (!$row['is_present']): ?>
+                                    <a href="mark_present.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-success" title="Mark Present"><i class="bi bi-check2-circle"></i></a>
+                                <?php else: ?>
+                                    <a href="mark_absent.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-secondary" title="Mark Absent" onclick="return confirm('Mark this student as absent again?')"><i class="bi bi-x-circle"></i></a>
+                                <?php endif; ?>
+                                <a href="edit_student.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-warning" title="Edit"><i class="bi bi-pencil-fill"></i></a>
+                                <a href="delete_student.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-danger" title="Delete" onclick="return confirm('Delete this student?')"><i class="bi bi-trash-fill"></i></a>
+                                
+                                <?php 
+                                // Only show "Mark as Candidate" button if student is NOT involved in any election role
+                                if (!$isInvolved && !$row['is_candidate']): 
+                                ?>
+                                    <button type="button" class="btn btn-sm btn-success" title="Mark as Candidate" 
+                                            data-bs-toggle="modal" data-bs-target="#candidateModal" 
+                                            data-student-id="<?= $row['student_id'] ?>"
+                                            data-student-name="<?= htmlspecialchars($row['student_name']) ?>"
+                                            data-student-faculty="<?= htmlspecialchars($row['student_faculty']) ?>"
+                                            data-student-batch="<?= htmlspecialchars($row['student_batch']) ?>"
+                                            data-student-semester="<?= $row['student_semester'] ?>">
+                                        <i class="bi bi-star-fill"></i>
+                                    </button>
+                                <?php else: ?>
+                                    <!-- Show disabled state or tooltip explaining why button is hidden -->
+                                    <button type="button" class="btn btn-sm btn-secondary" title="Already involved in election" disabled>
+                                        <i class="bi bi-star-fill"></i>
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <tr><td colspan="11" class="text-center text-muted py-4"><i class="bi bi-inbox display-6 d-block mb-2"></i>No students found.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -131,28 +239,46 @@ $result = $conn->query($sql);
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <!-- Candidate Info -->
+                <div class="alert alert-info" id="candidateInfo">
+                    <strong>Candidate:</strong> <span id="candidateName">—</span><br>
+                    <strong>Faculty:</strong> <span id="candidateFaculty">—</span> &middot;
+                    <strong>Batch:</strong> <span id="candidateBatch">—</span> &middot;
+                    <strong>Semester:</strong> <span id="candidateSemester">—</span>
+                </div>
+
                 <form id="candidateForm" enctype="multipart/form-data">
                     <input type="hidden" name="student_id" id="candidate_student_id">
-                    
+
                     <div class="mb-3">
-                        <label for="candidate_photo" class="form-label">Candidate Photo</label>
-                        <input type="file" class="form-control" name="candidate_photo" id="candidate_photo" accept="image/*">
+                        <label for="candidate_photo" class="form-label">Candidate Photo <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" name="candidate_photo" id="candidate_photo" accept="image/*" required>
+                        <div class="form-text">Upload a photo of the candidate (required).</div>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="supporter1" class="form-label">Supporter 1</label>
-                            <select class="form-select" name="supporter1" id="supporter1">
+                            <label for="supporter1" class="form-label">Supporter 1 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="supporter1" id="supporter1" required>
                                 <option value="">Select supporter…</option>
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label for="supporter2" class="form-label">Supporter 2</label>
-                            <select class="form-select" name="supporter2" id="supporter2">
+                            <label for="supporter2" class="form-label">Supporter 2 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="supporter2" id="supporter2" required>
                                 <option value="">Select supporter…</option>
                             </select>
                         </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="proposer" class="form-label">Proposer <span class="text-danger">*</span></label>
+                            <select class="form-select" name="proposer" id="proposer" required>
+                                <option value="">Select proposer…</option>
+                            </select>
+                        </div>
                     </div>
+
+                    <!-- Hidden election_id field - you need to pass this -->
+                    <input type="hidden" name="election_id" id="election_id" value="2">
 
                     <div id="candidateFeedback" class="mt-2"></div>
                 </form>
@@ -173,31 +299,81 @@ document.addEventListener('DOMContentLoaded', function() {
     const studentIdInput = document.getElementById('candidate_student_id');
     const supporter1 = document.getElementById('supporter1');
     const supporter2 = document.getElementById('supporter2');
+    const proposer = document.getElementById('proposer');
     const feedback = document.getElementById('candidateFeedback');
     const submitBtn = document.getElementById('submitCandidateBtn');
+    const photoInput = document.getElementById('candidate_photo');
 
-    // When modal is about to show, load supporters via AJAX
+    const candName = document.getElementById('candidateName');
+    const candFaculty = document.getElementById('candidateFaculty');
+    const candBatch = document.getElementById('candidateBatch');
+    const candSemester = document.getElementById('candidateSemester');
+
+    let allStudents = [];
+    let candidateId = 0;
+
+    function rebuildDropdowns() {
+        const s1 = supporter1;
+        const s2 = supporter2;
+        const prop = proposer;
+        const currentS1 = s1.value;
+        const currentS2 = s2.value;
+        const currentProp = prop.value;
+
+        function buildOptions(excludeIds, selectedValue) {
+            let html = '<option value="">Select …</option>';
+            allStudents.forEach(s => {
+                const idStr = s.student_id.toString();
+                if (excludeIds.includes(idStr)) return;
+                const selected = (idStr === selectedValue) ? ' selected' : '';
+                html += `<option value="${idStr}"${selected}>${s.student_name} (${s.student_id})</option>`;
+            });
+            return html;
+        }
+
+        const excludeS1 = [candidateId.toString()];
+        if (currentS2) excludeS1.push(currentS2);
+        if (currentProp) excludeS1.push(currentProp);
+        s1.innerHTML = buildOptions(excludeS1, currentS1);
+
+        const excludeS2 = [candidateId.toString()];
+        if (currentS1) excludeS2.push(currentS1);
+        if (currentProp) excludeS2.push(currentProp);
+        s2.innerHTML = buildOptions(excludeS2, currentS2);
+
+        const excludeProp = [candidateId.toString()];
+        if (currentS1) excludeProp.push(currentS1);
+        if (currentS2) excludeProp.push(currentS2);
+        prop.innerHTML = buildOptions(excludeProp, currentProp);
+    }
+
+    supporter1.addEventListener('change', rebuildDropdowns);
+    supporter2.addEventListener('change', rebuildDropdowns);
+    proposer.addEventListener('change', rebuildDropdowns);
+
     modal.addEventListener('show.bs.modal', function(event) {
-        const button = event.relatedTarget; // Button that triggered the modal
+        const button = event.relatedTarget;
         const studentId = button.getAttribute('data-student-id');
+        candidateId = studentId;
         studentIdInput.value = studentId;
 
-        // Reset form
+        candName.textContent = button.getAttribute('data-student-name') || '—';
+        candFaculty.textContent = button.getAttribute('data-student-faculty') || '—';
+        candBatch.textContent = button.getAttribute('data-student-batch') || '—';
+        candSemester.textContent = button.getAttribute('data-student-semester') || '—';
+
         supporter1.innerHTML = '<option value="">Select supporter…</option>';
         supporter2.innerHTML = '<option value="">Select supporter…</option>';
+        proposer.innerHTML = '<option value="">Select proposer…</option>';
+        photoInput.value = '';
         feedback.innerHTML = '';
-        document.getElementById('candidate_photo').value = '';
 
-        // Fetch supporters
         fetch('get_supporters.php?student_id=' + studentId)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    const options = data.supporters.map(s => 
-                        `<option value="${s.student_id}">${s.student_name} (${s.student_id})</option>`
-                    ).join('');
-                    supporter1.innerHTML += options;
-                    supporter2.innerHTML += options;
+                    allStudents = data.supporters;
+                    rebuildDropdowns();
                 } else {
                     feedback.innerHTML = `<div class="alert alert-warning">${data.message}</div>`;
                 }
@@ -207,8 +383,25 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
 
-    // Submit form via AJAX
+    function validateForm() {
+        if (!photoInput.files || photoInput.files.length === 0) {
+            feedback.innerHTML = `<div class="alert alert-danger">Please upload a candidate photo.</div>`;
+            return false;
+        }
+        const selects = [supporter1, supporter2, proposer];
+        for (let sel of selects) {
+            if (!sel.value) {
+                feedback.innerHTML = `<div class="alert alert-danger">Please select a ${sel.id.replace('supporter', 'supporter ')}.</div>`;
+                return false;
+            }
+        }
+        return true;
+    }
+
     submitBtn.addEventListener('click', function() {
+        feedback.innerHTML = '';
+        if (!validateForm()) return;
+
         const form = document.getElementById('candidateForm');
         const formData = new FormData(form);
 
@@ -224,9 +417,6 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 data = JSON.parse(text);
             } catch (e) {
-                // Server didn't return valid JSON at all — show the raw
-                // response so the actual PHP error is visible instead of
-                // a generic "network error".
                 throw new Error('Server did not return valid JSON. Raw response: ' + text.substring(0, 500));
             }
             return data;

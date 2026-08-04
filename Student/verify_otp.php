@@ -91,7 +91,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['verify_otp'])) {
                     </div>
                     <button type="submit" name="verify_otp" class="btn btn-success w-100"><i class="bi bi-unlock-fill me-1"></i>Verify OTP</button>
                 </form>
-                <p class="auth-footnote"><a href="student_verify.php"><i class="bi bi-arrow-left"></i> Go back</a></p>
             <?php endif; ?>
         </div>
     </div>
