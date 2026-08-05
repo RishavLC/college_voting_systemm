@@ -127,6 +127,138 @@ $result = $conn->query($sql);
         color: white;
         border-color: #dc3545;
     }
+
+    /* ===== FIXED MODAL STYLES - NON SCROLLABLE ===== */
+    .modal-content {
+        max-height: 95vh;
+        overflow: hidden;
+        border-radius: 12px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+
+    .modal-header {
+        flex-shrink: 0;
+        padding: 1rem 1.5rem;
+        border-bottom: 2px solid rgba(255,255,255,0.1);
+    }
+
+    .modal-body {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        padding: 1.5rem;
+        max-height: calc(95vh - 140px);
+        /* Custom scrollbar for better appearance */
+        scrollbar-width: thin;
+        scrollbar-color: #c1c7cd transparent;
+    }
+
+    .modal-body::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .modal-body::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .modal-body::-webkit-scrollbar-thumb {
+        background-color: #c1c7cd;
+        border-radius: 3px;
+    }
+
+    .modal-body::-webkit-scrollbar-thumb:hover {
+        background-color: #a0a7ae;
+    }
+
+    .modal-footer {
+        flex-shrink: 0;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #dee2e6;
+        background: #f8f9fa;
+        border-radius: 0 0 12px 12px;
+    }
+
+    /* Modal dialog positioning */
+    .modal-dialog {
+        margin: 1.75rem auto;
+        max-width: 700px;
+        display: flex;
+        align-items: center;
+        min-height: calc(100% - 3.5rem);
+    }
+
+    /* Candidate info alert styling */
+    #candidateInfo {
+        margin-bottom: 1.25rem;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        background: #e7f3ff;
+        border-color: #b6d4fe;
+        color: #084298;
+        font-size: 0.95rem;
+    }
+
+    /* Form spacing */
+    #candidateForm .mb-3 {
+        margin-bottom: 1.25rem !important;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 576px) {
+        .modal-dialog {
+            margin: 0.5rem;
+            min-height: calc(100% - 1rem);
+        }
+        .modal-body {
+            padding: 1rem;
+            max-height: calc(95vh - 120px);
+        }
+        .modal-header {
+            padding: 0.75rem 1rem;
+        }
+        .modal-footer {
+            padding: 0.75rem 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .modal-footer .btn {
+            flex: 1;
+            min-width: 80px;
+        }
+    }
+
+    /* Mobile landscape */
+    @media (max-height: 600px) and (orientation: landscape) {
+        .modal-body {
+            max-height: calc(100vh - 160px);
+        }
+        #photoPreview {
+            max-width: 120px;
+            max-height: 120px;
+        }
+        .modal-dialog {
+            margin: 0.25rem auto;
+        }
+    }
+
+    /* Ensure buttons are properly sized */
+    .modal-footer .btn {
+        padding: 0.5rem 1.25rem;
+        font-weight: 500;
+    }
+
+    /* Loading state */
+    .spinner-border-sm {
+        width: 1rem;
+        height: 1rem;
+        border-width: 0.2em;
+    }
+
+    /* Feedback messages */
+    #candidateFeedback .alert {
+        border-radius: 8px;
+        margin-top: 0.5rem;
+        padding: 0.75rem 1rem;
+    }
 </style>
 
 <div class="card shadow">
@@ -295,8 +427,8 @@ $result = $conn->query($sql);
     </div>
 </div>
 
-<!-- ====== CANDIDATE MODAL WITH PHOTO PREVIEW ====== -->
-<div class="modal fade" id="candidateModal" tabindex="-1" aria-labelledby="candidateModalLabel" aria-hidden="true">
+<!-- ====== CANDIDATE MODAL WITH PHOTO PREVIEW - FIXED NON-SCROLLABLE ====== -->
+<div class="modal fade" id="candidateModal" tabindex="-1" aria-labelledby="candidateModalLabel" aria-hidden="true" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
@@ -363,6 +495,9 @@ $result = $conn->query($sql);
                                 <option value="">Select supporter…</option>
                             </select>
                         </div>
+                    </div>
+                    
+                    <div class="row">
                         <div class="col-md-4 mb-3">
                             <label for="proposer" class="form-label">Proposer <span class="text-danger">*</span></label>
                             <select class="form-select" name="proposer" id="proposer" required>
@@ -655,15 +790,25 @@ document.addEventListener('DOMContentLoaded', function() {
             method: 'POST',
             body: formData
         })
-        .then(response => response.text().then(text => {
+        .then(response => {
+            // Check if response is OK
+            if (!response.ok) {
+                return response.text().then(text => {
+                    throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+                });
+            }
+            return response.text();
+        })
+        .then(text => {
             let data;
             try {
                 data = JSON.parse(text);
             } catch (e) {
-                throw new Error('Server did not return valid JSON. Raw response: ' + text.substring(0, 500));
+                console.error('Raw response:', text);
+                throw new Error('Server returned invalid JSON. Please check the console for details.');
             }
             return data;
-        }))
+        })
         .then(data => {
             if (data.success) {
                 feedback.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
@@ -679,6 +824,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
+            console.error('Error details:', error);
             feedback.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Mark as Candidate';
