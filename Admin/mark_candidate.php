@@ -1,661 +1,184 @@
 <?php
+// Never let a PHP warning/fatal error leak raw HTML into what's supposed
+// to be a JSON response — that's what turns into "Network error" on the
+// frontend (the browser's fetch().json() call chokes on non-JSON output).
+error_reporting(E_ALL);
+ini_set('display_errors', '0'); // don't print raw PHP errors into the response
+header('Content-Type: application/json');
+
+function json_fail($message, $debug = null) {
+    $out = ['success' => false, 'message' => $message];
+    if ($debug !== null) $out['debug'] = $debug;
+    echo json_encode($out);
+    exit();
+}
+
+// Catch fatal errors (e.g. a mysqli exception, undefined function, etc.)
+// that would otherwise produce an HTML error page instead of JSON.
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Server error while marking candidate.',
+            'debug' => $err['message'] . ' in ' . $err['file'] . ' on line ' . $err['line'],
+        ]);
+    }
+});
+
+session_start();
+if (!isset($_SESSION['admin_id'])) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit();
+}
+
 require_once '../Database/db_connect.php';
 
-// Fetch filters + search
-$batch = $_GET['batch'] ?? '';
-$faculty = $_GET['faculty'] ?? '';
-$semester = $_GET['semester'] ?? '';
-$search = $_GET['search'] ?? '';
+$response = ['success' => false, 'message' => ''];
 
-// Modified query to include candidate status with roles
-$sql = "SELECT s.*, 
-        CASE 
-            WHEN c.candidate_id IS NOT NULL THEN 'candidate'
-            WHEN cs1.candidate_id IS NOT NULL THEN 'supporter1'
-            WHEN cs2.candidate_id IS NOT NULL THEN 'supporter2'
-            WHEN cp.candidate_id IS NOT NULL THEN 'proposer'
-            ELSE 'none'
-        END as candidate_role
-        FROM student s
-        LEFT JOIN candidate c ON s.student_id = c.student_id
-        LEFT JOIN candidate cs1 ON s.student_id = cs1.supporter1
-        LEFT JOIN candidate cs2 ON s.student_id = cs2.supporter2
-        LEFT JOIN candidate cp ON s.student_id = cp.proposer
-        WHERE 1=1";
+try {
 
-if ($batch) $sql .= " AND s.student_batch = '$batch'";
-if ($faculty) $sql .= " AND s.student_faculty = '$faculty'";
-if ($semester) $sql .= " AND s.student_semester = '$semester'";
-if ($search) {
-    $searchEsc = $conn->real_escape_string($search);
-    $sql .= " AND (s.student_name LIKE '%$searchEsc%' 
-                  OR s.student_email LIKE '%$searchEsc%' 
-                  OR s.student_id = '$searchEsc')";
-}
-// Group by to avoid duplicates
-$sql .= " GROUP BY s.student_id";
-$result = $conn->query($sql);
-?>
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $student_id = intval($_POST['student_id'] ?? 0);
+    $supporter1 = intval($_POST['supporter1'] ?? 0);
+    $supporter2 = intval($_POST['supporter2'] ?? 0);
+    $proposer   = intval($_POST['proposer'] ?? 0); // new field
 
-<style>
-    /* Sticky header for the table */
-    .sticky-header thead th {
-        position: sticky;
-        top: 0;
-        background: #f7f7fc;
-        z-index: 10;
-        box-shadow: inset 0 -2px 0 var(--border, #e7e6f3);
-    }
-    .table-scroll {
-        max-height: 500px;
-        overflow-y: auto;
-        border-radius: var(--radius-md, 8px);
-        border: 1px solid var(--border, #e7e6f3);
-    }
-    .table-scroll table {
-        margin-bottom: 0;
-    }
-    .table-scroll .table thead th {
-        background: #f7f7fc;
-    }
-    /* Status badge styles */
-    .role-badge {
-        font-size: 0.7rem;
-        padding: 0.25rem 0.5rem;
-    }
-    
-    /* Photo preview animations */
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-            transform: scale(0.9);
-        }
-        to {
-            opacity: 1;
-            transform: scale(1);
-        }
-    }
-    
-    /* Photo preview container styling */
-    #photoPreviewContainer .border {
-        transition: all 0.3s ease;
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    }
-    
-    #photoPreview {
-        transition: all 0.3s ease;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    
-    #photoPreview:hover {
-        transform: scale(1.02);
-        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-    }
-    
-    /* Placeholder styling */
-    #photoPlaceholder {
-        transition: all 0.3s ease;
-        background: #f8f9fa;
-    }
-    
-    #photoPlaceholder i {
-        font-size: 3rem;
-        color: #adb5bd;
-    }
-    
-    /* File input styling */
-    #candidate_photo {
-        cursor: pointer;
-    }
-    
-    #candidate_photo:hover {
-        border-color: #198754;
-    }
-    
-    /* Clear button */
-    #clearPhotoBtn {
-        transition: all 0.3s ease;
-    }
-    
-    #clearPhotoBtn:hover {
-        background-color: #dc3545;
-        color: white;
-        border-color: #dc3545;
-    }
-</style>
-
-<div class="card shadow">
-    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span><i class="bi bi-people-fill me-2"></i>Students</span>
-        <div class="d-flex gap-2">
-            <a href="add_student.php" class="btn btn-sm btn-light"><i class="bi bi-plus-lg"></i> Add</a>
-            <button type="button" class="btn btn-sm btn-light" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-file-earmark-arrow-up"></i> Import Excel</button>
-            <button type="button" class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#resetAttendanceModal"><i class="bi bi-arrow-counterclockwise"></i> Reset All Attendance</button>
-        </div>
-    </div>
-    <div class="card-body">
-        <!-- Filters + Search -->
-        <form method="GET" action="home.php" class="row g-2 mb-3">
-            <input type="hidden" name="section" value="students">
-            <div class="col-md-3">
-                <input type="text" name="batch" class="form-control" placeholder="Batch" value="<?= htmlspecialchars($batch) ?>">
-            </div>
-            <div class="col-md-3">
-                <input type="text" name="faculty" class="form-control" placeholder="Faculty" value="<?= htmlspecialchars($faculty) ?>">
-            </div>
-            <div class="col-md-2">
-                <input type="number" name="semester" class="form-control" placeholder="Semester" value="<?= htmlspecialchars($semester) ?>">
-            </div>
-            <div class="col-md-4 d-flex gap-2">
-                <button type="submit" class="btn btn-secondary"><i class="bi bi-funnel"></i> Filter</button>
-                <a href="home.php?section=students" class="btn btn-outline-secondary">Reset</a>
-            </div>
-            <!-- Search row -->
-            <div class="col-12 mt-2">
-                <div class="input-group">
-                    <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input type="text" name="search" class="form-control" placeholder="Search by name, email, or student ID" value="<?= htmlspecialchars($search) ?>">
-                    <button type="submit" class="btn btn-primary">Search</button>
-                </div>
-            </div>
-        </form>
-
-        <!-- Table -->
-        <div class="table-scroll">
-            <table class="table table-bordered table-striped table-hover align-middle sticky-header">
-                <thead>
-                    <tr>
-                        <th>ID</th><th>Name</th><th>Batch</th><th>Faculty</th><th>Semester</th>
-                        <th>Phone</th><th>Email</th><th>Voted</th><th>Candidate</th><th>Present</th>
-                        <th class="text-end">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php if ($result && $result->num_rows > 0): ?>
-                    <?php while($row = $result->fetch_assoc()): ?>
-                    <?php 
-                    // Determine if student is already a candidate, supporter, or proposer
-                    $isCandidate = $row['is_candidate'] == 1;
-                    $candidateRole = $row['candidate_role'] ?? 'none';
-                    
-                    // Check if student is involved in any election role
-                    $isInvolved = ($candidateRole != 'none');
-                    
-                    // Get role label for display
-                    $roleLabel = '';
-                    $roleBadgeClass = '';
-                    switch($candidateRole) {
-                        case 'candidate':
-                            $roleLabel = 'Candidate';
-                            $roleBadgeClass = 'bg-primary';
-                            break;
-                        case 'supporter1':
-                        case 'supporter2':
-                            $roleLabel = 'Supporter';
-                            $roleBadgeClass = 'bg-info';
-                            break;
-                        case 'proposer':
-                            $roleLabel = 'Proposer';
-                            $roleBadgeClass = 'bg-warning text-dark';
-                            break;
-                        default:
-                            $roleLabel = '';
-                            $roleBadgeClass = '';
-                    }
-                    ?>
-                    <tr>
-                        <td><?= $row['student_id'] ?></td>
-                        <td class="fw-semibold">
-                            <?= htmlspecialchars($row['student_name']) ?>
-                            <?php if ($isInvolved): ?>
-                                <span class="badge <?= $roleBadgeClass ?> role-badge ms-1"><?= $roleLabel ?></span>
-                            <?php endif; ?>
-                        </td>
-                        <td><?= htmlspecialchars($row['student_batch']) ?></td>
-                        <td><?= htmlspecialchars($row['student_faculty']) ?></td>
-                        <td><?= $row['student_semester'] ?></td>
-                        <td><?= htmlspecialchars($row['student_phone']) ?></td>
-                        <td><?= htmlspecialchars($row['student_email']) ?></td>
-                        <td><span class="badge bg-<?= $row['voting_status'] ? 'success' : 'secondary' ?>"><?= $row['voting_status'] ? 'Yes' : 'No' ?></span></td>
-                        <td><span class="badge bg-<?= $row['is_candidate'] ? 'primary' : 'light text-dark' ?>"><?= $row['is_candidate'] ? 'Yes' : 'No' ?></span></td>
-                        <td>
-                            <?php if ($row['is_present']): ?>
-                                <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Present</span>
-                            <?php else: ?>
-                                <span class="badge bg-secondary"><i class="bi bi-clock"></i> Absent</span>
-                            <?php endif; ?>
-                        </td>
-                        <td class="text-end">
-                            <div class="d-flex gap-1 justify-content-end flex-wrap">
-                                <?php if (!$row['is_present']): ?>
-                                    <a href="mark_present.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-success" title="Mark Present"><i class="bi bi-check2-circle"></i></a>
-                                <?php else: ?>
-                                    <a href="mark_absent.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-secondary" title="Mark Absent" onclick="return confirm('Mark this student as absent again?')"><i class="bi bi-x-circle"></i></a>
-                                <?php endif; ?>
-                                <a href="edit_student.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-warning" title="Edit"><i class="bi bi-pencil-fill"></i></a>
-                                <a href="delete_student.php?id=<?= $row['student_id'] ?>" class="btn btn-sm btn-danger" title="Delete" onclick="return confirm('Delete this student?')"><i class="bi bi-trash-fill"></i></a>
-                                
-                                <?php 
-                                // Only show "Mark as Candidate" button if student is NOT involved in any election role
-                                if (!$isInvolved && !$row['is_candidate']): 
-                                ?>
-                                    <button type="button" class="btn btn-sm btn-success" title="Mark as Candidate" 
-                                            data-bs-toggle="modal" data-bs-target="#candidateModal" 
-                                            data-student-id="<?= $row['student_id'] ?>"
-                                            data-student-name="<?= htmlspecialchars($row['student_name']) ?>"
-                                            data-student-faculty="<?= htmlspecialchars($row['student_faculty']) ?>"
-                                            data-student-batch="<?= htmlspecialchars($row['student_batch']) ?>"
-                                            data-student-semester="<?= $row['student_semester'] ?>">
-                                        <i class="bi bi-star-fill"></i>
-                                    </button>
-                                <?php else: ?>
-                                    <!-- Show disabled state with tooltip -->
-                                    <button type="button" class="btn btn-sm btn-secondary" title="Already involved in election" disabled>
-                                        <i class="bi bi-star-fill"></i>
-                                    </button>
-                                <?php endif; ?>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endwhile; ?>
-                <?php else: ?>
-                    <tr><td colspan="11" class="text-center text-muted py-4"><i class="bi bi-inbox display-6 d-block mb-2"></i>No students found.</td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- ====== RESET ALL ATTENDANCE MODAL ====== -->
-<div class="modal fade" id="resetAttendanceModal" tabindex="-1" aria-labelledby="resetAttendanceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title" id="resetAttendanceModalLabel"><i class="bi bi-exclamation-triangle-fill"></i> Reset All Attendance</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>This will mark <strong>every student</strong> as <strong>absent</strong> again.</p>
-                <p class="text-muted small mb-0">It only resets check-in/attendance status — it does not affect votes already cast or OTPs already issued.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form method="POST" action="reset_all_present.php">
-                    <input type="hidden" name="confirm_reset" value="1">
-                    <button type="submit" class="btn btn-warning"><i class="bi bi-arrow-counterclockwise"></i> Reset All to Absent</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ====== CANDIDATE MODAL ====== -->
-<div class="modal fade" id="candidateModal" tabindex="-1" aria-labelledby="candidateModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="candidateModalLabel"><i class="bi bi-star-fill"></i> Mark as Candidate</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <!-- Candidate Info -->
-                <div class="alert alert-info" id="candidateInfo">
-                    <strong>Candidate:</strong> <span id="candidateName">—</span><br>
-                    <strong>Faculty:</strong> <span id="candidateFaculty">—</span> &middot;
-                    <strong>Batch:</strong> <span id="candidateBatch">—</span> &middot;
-                    <strong>Semester:</strong> <span id="candidateSemester">—</span>
-                </div>
-
-                <form id="candidateForm" enctype="multipart/form-data">
-                    <input type="hidden" name="student_id" id="candidate_student_id">
-                    <input type="hidden" name="election_id" id="election_id" value="2">
-
-                    <!-- Photo Upload with Preview -->
-                    <div class="mb-3">
-                        <label for="candidate_photo" class="form-label">Candidate Photo <span class="text-danger">*</span></label>
-                        
-                        <!-- Photo Preview Container - shows when image is selected -->
-                        <div id="photoPreviewContainer" class="mb-2" style="display: none;">
-                            <div class="text-center p-3 border rounded bg-light">
-                                <img id="photoPreview" src="#" alt="Candidate Photo Preview" 
-                                     style="max-width: 200px; max-height: 200px; object-fit: cover; border-radius: 8px; border: 2px solid #198754;">
-                                <div class="mt-2">
-                                    <span id="photoFileName" class="text-muted small"></span>
-                                    <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="removePhoto()">
-                                        <i class="bi bi-x-circle"></i> Remove
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- File Input -->
-                        <div class="input-group">
-                            <input type="file" class="form-control" name="candidate_photo" id="candidate_photo" accept="image/*" required>
-                            <button class="btn btn-outline-secondary" type="button" id="clearPhotoBtn" onclick="removePhoto()">
-                                <i class="bi bi-x"></i> Clear
-                            </button>
-                        </div>
-                        <div class="form-text">Upload a photo of the candidate (required). Supported formats: JPG, PNG, GIF, WEBP (Max 5MB)</div>
-                        
-                        <!-- Photo Preview Placeholder (when no image selected) -->
-                        <div id="photoPlaceholder" class="text-center p-3 border rounded bg-light mt-2">
-                            <i class="bi bi-image display-6 text-muted"></i>
-                            <p class="text-muted mb-0">No photo selected</p>
-                            <small class="text-muted">Click "Choose File" to upload a candidate photo</small>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="supporter1" class="form-label">Supporter 1 <span class="text-danger">*</span></label>
-                            <select class="form-select" name="supporter1" id="supporter1" required>
-                                <option value="">Select supporter…</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="supporter2" class="form-label">Supporter 2 <span class="text-danger">*</span></label>
-                            <select class="form-select" name="supporter2" id="supporter2" required>
-                                <option value="">Select supporter…</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="proposer" class="form-label">Proposer <span class="text-danger">*</span></label>
-                            <select class="form-select" name="proposer" id="proposer" required>
-                                <option value="">Select proposer…</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div id="candidateFeedback" class="mt-2"></div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-success" id="submitCandidateBtn">
-                    <i class="bi bi-check-circle"></i> Mark as Candidate
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const modal = document.getElementById('candidateModal');
-    const studentIdInput = document.getElementById('candidate_student_id');
-    const supporter1 = document.getElementById('supporter1');
-    const supporter2 = document.getElementById('supporter2');
-    const proposer = document.getElementById('proposer');
-    const feedback = document.getElementById('candidateFeedback');
-    const submitBtn = document.getElementById('submitCandidateBtn');
-    const photoInput = document.getElementById('candidate_photo');
-    
-    // Photo preview elements
-    const photoPreviewContainer = document.getElementById('photoPreviewContainer');
-    const photoPreview = document.getElementById('photoPreview');
-    const photoFileName = document.getElementById('photoFileName');
-    const photoPlaceholder = document.getElementById('photoPlaceholder');
-
-    const candName = document.getElementById('candidateName');
-    const candFaculty = document.getElementById('candidateFaculty');
-    const candBatch = document.getElementById('candidateBatch');
-    const candSemester = document.getElementById('candidateSemester');
-
-    let allStudents = [];
-    let candidateId = 0;
-
-    // ===== PHOTO PREVIEW FUNCTIONS =====
-    function previewPhoto(file) {
-        if (!file) {
-            hidePhotoPreview();
-            return;
-        }
-
-        // Validate file type
-        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
-        if (!validTypes.includes(file.type)) {
-            feedback.innerHTML = `<div class="alert alert-danger">Please upload a valid image file (JPG, PNG, GIF, WEBP, BMP).</div>`;
-            photoInput.value = '';
-            hidePhotoPreview();
-            return;
-        }
-
-        // Validate file size (max 5MB)
-        const maxSize = 5 * 1024 * 1024; // 5MB
-        if (file.size > maxSize) {
-            feedback.innerHTML = `<div class="alert alert-danger">File size exceeds 5MB limit. Please compress your image.</div>`;
-            photoInput.value = '';
-            hidePhotoPreview();
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            // Show preview
-            photoPreview.src = e.target.result;
-            photoPreviewContainer.style.display = 'block';
-            photoPlaceholder.style.display = 'none';
-            photoFileName.textContent = file.name + ' (' + formatFileSize(file.size) + ')';
-            feedback.innerHTML = ''; // Clear any previous errors
-            
-            // Add success animation
-            photoPreview.style.animation = 'fadeIn 0.5s ease';
-        };
-        reader.onerror = function() {
-            feedback.innerHTML = `<div class="alert alert-danger">Error reading file. Please try again.</div>`;
-        };
-        reader.readAsDataURL(file);
+    if ($student_id <= 0) {
+        json_fail('Invalid student ID.');
     }
 
-    function hidePhotoPreview() {
-        photoPreviewContainer.style.display = 'none';
-        photoPlaceholder.style.display = 'block';
-        photoPreview.src = '#';
-        photoFileName.textContent = '';
+    // ----- 1. Fetch student details -----
+    $student_stmt = $conn->prepare("SELECT student_batch, student_faculty, student_semester FROM student WHERE student_id = ?");
+    if (!$student_stmt) json_fail('Query error (student lookup).', $conn->error);
+    $student_stmt->bind_param("i", $student_id);
+    $student_stmt->execute();
+    $student_result = $student_stmt->get_result();
+    if ($student_result->num_rows == 0) {
+        json_fail('Student not found.');
+    }
+    $student = $student_result->fetch_assoc();
+    $batch = $student['student_batch'];
+    $faculty = $student['student_faculty'];
+    $semester = $student['student_semester'];
+
+    // ----- 2. Validate supporters and proposer (must be different from candidate and each other) -----
+    if ($supporter1 == $student_id || $supporter2 == $student_id || $proposer == $student_id) {
+        json_fail('A supporter or proposer cannot be the candidate themselves.');
+    }
+    if ($supporter1 && $supporter1 == $supporter2) {
+        json_fail('Supporter 1 and Supporter 2 must be different.');
+    }
+    if ($supporter1 && $supporter1 == $proposer) {
+        json_fail('Supporter 1 and Proposer must be different.');
+    }
+    if ($supporter2 && $supporter2 == $proposer) {
+        json_fail('Supporter 2 and Proposer must be different.');
     }
 
-    // Make removePhoto globally accessible for onclick
-    window.removePhoto = function() {
-        photoInput.value = '';
-        hidePhotoPreview();
-        feedback.innerHTML = '';
-        // Reset the file input
-        const newInput = photoInput.cloneNode(true);
-        photoInput.parentNode.replaceChild(newInput, photoInput);
-        // Re-attach event listener
-        newInput.addEventListener('change', handlePhotoChange);
-        document.getElementById('clearPhotoBtn').onclick = window.removePhoto;
-    };
+    // Collect all role IDs for eligibility check
+    $role_ids = [];
+    if ($supporter1) $role_ids[] = $supporter1;
+    if ($supporter2) $role_ids[] = $supporter2;
+    if ($proposer)   $role_ids[] = $proposer;
 
-    function formatFileSize(bytes) {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    }
-
-    // ===== PHOTO INPUT EVENT HANDLER =====
-    function handlePhotoChange() {
-        if (this.files && this.files.length > 0) {
-            previewPhoto(this.files[0]);
-        } else {
-            hidePhotoPreview();
+    // If there are any, verify they all exist and share the same faculty/batch/semester
+    if (!empty($role_ids)) {
+        $placeholders = implode(',', array_fill(0, count($role_ids), '?'));
+        $check_query = "SELECT student_id FROM student WHERE student_id IN ($placeholders) 
+                        AND student_faculty = ? AND student_batch = ? AND student_semester = ?";
+        $stmt = $conn->prepare($check_query);
+        if (!$stmt) json_fail('Query error (role eligibility check).', $conn->error);
+        $types = str_repeat('i', count($role_ids)) . 'ssi';
+        $params = array_merge($role_ids, [$faculty, $batch, $semester]);
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $valid_count = $stmt->get_result()->num_rows;
+        if ($valid_count != count($role_ids)) {
+            json_fail('One or more selected persons are not eligible (must be same faculty/batch/semester).');
         }
     }
 
-    // Attach event listener to photo input
-    photoInput.addEventListener('change', handlePhotoChange);
-
-    // ===== DROPDOWN FUNCTIONS =====
-    function rebuildDropdowns() {
-        const s1 = supporter1;
-        const s2 = supporter2;
-        const prop = proposer;
-        const currentS1 = s1.value;
-        const currentS2 = s2.value;
-        const currentProp = prop.value;
-
-        function buildOptions(excludeIds, selectedValue) {
-            let html = '<option value="">Select …</option>';
-            allStudents.forEach(s => {
-                const idStr = s.student_id.toString();
-                if (excludeIds.includes(idStr)) return;
-                const selected = (idStr === selectedValue) ? ' selected' : '';
-                html += `<option value="${idStr}"${selected}>${s.student_name} (${s.student_id})</option>`;
-            });
-            return html;
-        }
-
-        const excludeS1 = [candidateId.toString()];
-        if (currentS2) excludeS1.push(currentS2);
-        if (currentProp) excludeS1.push(currentProp);
-        s1.innerHTML = buildOptions(excludeS1, currentS1);
-
-        const excludeS2 = [candidateId.toString()];
-        if (currentS1) excludeS2.push(currentS1);
-        if (currentProp) excludeS2.push(currentProp);
-        s2.innerHTML = buildOptions(excludeS2, currentS2);
-
-        const excludeProp = [candidateId.toString()];
-        if (currentS1) excludeProp.push(currentS1);
-        if (currentS2) excludeProp.push(currentS2);
-        prop.innerHTML = buildOptions(excludeProp, currentProp);
+    // ----- 3. Find an election (upcoming or active) -----
+    $election_query = "SELECT election_id FROM election 
+                       WHERE election_batch = ? AND election_faculty = ? AND election_semester = ?
+                       AND election_status IN ('upcoming', 'active') LIMIT 1";
+    $stmt = $conn->prepare($election_query);
+    if (!$stmt) json_fail('Query error (election lookup).', $conn->error);
+    $stmt->bind_param("ssi", $batch, $faculty, $semester);
+    $stmt->execute();
+    $election = $stmt->get_result()->fetch_assoc();
+    if (!$election) {
+        json_fail("No upcoming or active election found for this student's batch/faculty/semester.");
     }
+    $election_id = $election['election_id'];
 
-    supporter1.addEventListener('change', rebuildDropdowns);
-    supporter2.addEventListener('change', rebuildDropdowns);
-    proposer.addEventListener('change', rebuildDropdowns);
-
-    // ===== MODAL SHOW EVENT =====
-    modal.addEventListener('show.bs.modal', function(event) {
-        const button = event.relatedTarget;
-        const studentId = button.getAttribute('data-student-id');
-        candidateId = studentId;
-        studentIdInput.value = studentId;
-
-        candName.textContent = button.getAttribute('data-student-name') || '—';
-        candFaculty.textContent = button.getAttribute('data-student-faculty') || '—';
-        candBatch.textContent = button.getAttribute('data-student-batch') || '—';
-        candSemester.textContent = button.getAttribute('data-student-semester') || '—';
-
-        // Reset photo preview
-        photoInput.value = '';
-        hidePhotoPreview();
-        
-        // Reset dropdowns
-        supporter1.innerHTML = '<option value="">Select supporter…</option>';
-        supporter2.innerHTML = '<option value="">Select supporter…</option>';
-        proposer.innerHTML = '<option value="">Select proposer…</option>';
-        feedback.innerHTML = '';
-
-        fetch('get_supporters.php?student_id=' + studentId)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    allStudents = data.supporters;
-                    rebuildDropdowns();
-                } else {
-                    feedback.innerHTML = `<div class="alert alert-warning">${data.message}</div>`;
-                }
-            })
-            .catch(err => {
-                feedback.innerHTML = `<div class="alert alert-danger">Error loading supporters.</div>`;
-            });
-    });
-
-    // ===== MODAL HIDDEN EVENT =====
-    modal.addEventListener('hidden.bs.modal', function() {
-        // Reset everything when modal is closed
-        photoInput.value = '';
-        hidePhotoPreview();
-        feedback.innerHTML = '';
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Mark as Candidate';
-        
-        // Reset the file input
-        const newInput = photoInput.cloneNode(true);
-        photoInput.parentNode.replaceChild(newInput, photoInput);
-        newInput.addEventListener('change', handlePhotoChange);
-        document.getElementById('clearPhotoBtn').onclick = window.removePhoto;
-    });
-
-    // ===== VALIDATION =====
-    function validateForm() {
-        // Check photo
-        if (!photoInput.files || photoInput.files.length === 0) {
-            feedback.innerHTML = `<div class="alert alert-danger">Please upload a candidate photo.</div>`;
-            photoInput.focus();
-            return false;
-        }
-        
-        // Check file type and size
-        const file = photoInput.files[0];
-        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
-        if (!validTypes.includes(file.type)) {
-            feedback.innerHTML = `<div class="alert alert-danger">Please upload a valid image file (JPG, PNG, GIF, WEBP, BMP).</div>`;
-            return false;
-        }
-        if (file.size > 5 * 1024 * 1024) {
-            feedback.innerHTML = `<div class="alert alert-danger">File size exceeds 5MB limit.</div>`;
-            return false;
-        }
-
-        // Check supporters and proposer
-        const selects = [supporter1, supporter2, proposer];
-        const selectNames = ['Supporter 1', 'Supporter 2', 'Proposer'];
-        for (let i = 0; i < selects.length; i++) {
-            if (!selects[i].value) {
-                feedback.innerHTML = `<div class="alert alert-danger">Please select a ${selectNames[i]}.</div>`;
-                selects[i].focus();
-                return false;
-            }
+    // ----- 4. Ensure none of the chosen roles are already used in the same election -----
+    // We'll check each role individually against the candidate table for the same election.
+    $used_check = function($role_id, $role_name) use ($conn, $election_id) {
+        if ($role_id == 0) return true; // not provided, skip
+        $stmt = $conn->prepare("SELECT 1 FROM candidate WHERE election_id = ? AND (student_id = ? OR supporter1 = ? OR supporter2 = ? OR proposer = ?)");
+        $stmt->bind_param("iiiii", $election_id, $role_id, $role_id, $role_id, $role_id);
+        $stmt->execute();
+        if ($stmt->get_result()->num_rows > 0) {
+            json_fail("$role_name is already a candidate, supporter, or proposer in this election.");
         }
         return true;
+    };
+
+    // Check each role
+    if ($supporter1) $used_check($supporter1, 'Supporter 1');
+    if ($supporter2) $used_check($supporter2, 'Supporter 2');
+    if ($proposer)   $used_check($proposer,   'Proposer');
+
+    // Also ensure the candidate themselves is not already in the election
+    $stmt = $conn->prepare("SELECT 1 FROM candidate WHERE election_id = ? AND student_id = ?");
+    $stmt->bind_param("ii", $election_id, $student_id);
+    $stmt->execute();
+    if ($stmt->get_result()->num_rows > 0) {
+        json_fail('This student is already a candidate in this election.');
     }
 
-    // ===== SUBMIT =====
-    submitBtn.addEventListener('click', function() {
-        feedback.innerHTML = '';
-        if (!validateForm()) return;
-
-        const form = document.getElementById('candidateForm');
-        const formData = new FormData(form);
-
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processing…';
-
-        fetch('mark_candidate.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.text().then(text => {
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch (e) {
-                throw new Error('Server did not return valid JSON. Raw response: ' + text.substring(0, 500));
+    // ----- 5. Handle photo upload -----
+    $photo_path = null;
+    if (isset($_FILES['candidate_photo']) && $_FILES['candidate_photo']['error'] === UPLOAD_ERR_OK) {
+        $upload_dir = '../assets/uploads/candidates/';
+        if (!is_dir($upload_dir)) {
+            if (!mkdir($upload_dir, 0777, true) && !is_dir($upload_dir)) {
+                json_fail('Could not create upload directory. Check folder permissions on assets/uploads/candidates/.');
             }
-            return data;
-        }))
-        .then(data => {
-            if (data.success) {
-                feedback.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
-                setTimeout(() => {
-                    location.reload();
-                }, 1500);
-            } else {
-                let msg = data.message || 'Something went wrong.';
-                if (data.debug) msg += `<br><small class="text-muted">${data.debug}</small>`;
-                feedback.innerHTML = `<div class="alert alert-danger">${msg}</div>`;
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Mark as Candidate';
-            }
-        })
-        .catch(error => {
-            feedback.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Mark as Candidate';
-        });
-    });
-});
-</script>
+        }
+        $ext = pathinfo($_FILES['candidate_photo']['name'], PATHINFO_EXTENSION);
+        $filename = 'candidate_' . $student_id . '_' . time() . '.' . $ext;
+        $target = $upload_dir . $filename;
+        if (move_uploaded_file($_FILES['candidate_photo']['tmp_name'], $target)) {
+            $photo_path = 'assets/uploads/candidates/' . $filename;
+        } else {
+            json_fail('Failed to upload photo. Check that assets/uploads/candidates/ exists and is writable.');
+        }
+    }
+
+    // ----- 6. Insert candidate -----
+    $insert = $conn->prepare("INSERT INTO candidate (student_id, election_id, candidate_photo, supporter1, supporter2, proposer) VALUES (?, ?, ?, ?, ?, ?)");
+    if (!$insert) json_fail('Query error (candidate insert).', $conn->error);
+    $insert->bind_param("iisiii", $student_id, $election_id, $photo_path, $supporter1, $supporter2, $proposer);
+    if ($insert->execute()) {
+        $conn->query("UPDATE student SET is_candidate = 1 WHERE student_id = $student_id");
+        $response['success'] = true;
+        $response['message'] = 'Candidate marked successfully!';
+    } else {
+        $response['message'] = 'Database error: ' . $conn->error;
+    }
+} else {
+    $response['message'] = 'Invalid request method.';
+}
+
+} catch (Throwable $e) {
+    json_fail('Unexpected server error while marking candidate.', $e->getMessage());
+}
+
+echo json_encode($response);
+exit();
+?>

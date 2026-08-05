@@ -36,6 +36,7 @@ if ($search) {
 $sql .= " GROUP BY s.student_id";
 $result = $conn->query($sql);
 ?>
+
 <style>
     /* Sticky header for the table */
     .sticky-header thead th {
@@ -61,6 +62,70 @@ $result = $conn->query($sql);
     .role-badge {
         font-size: 0.7rem;
         padding: 0.25rem 0.5rem;
+    }
+    
+    /* Photo preview animations */
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: scale(0.9);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+    
+    /* Photo preview container styling */
+    #photoPreviewContainer .border {
+        transition: all 0.3s ease;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    }
+    
+    #photoPreview {
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        max-width: 200px;
+        max-height: 200px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 2px solid #198754;
+    }
+    
+    #photoPreview:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+    
+    /* Placeholder styling */
+    #photoPlaceholder {
+        transition: all 0.3s ease;
+        background: #f8f9fa;
+    }
+    
+    #photoPlaceholder i {
+        font-size: 3rem;
+        color: #adb5bd;
+    }
+    
+    /* File input styling */
+    #candidate_photo {
+        cursor: pointer;
+    }
+    
+    #candidate_photo:hover {
+        border-color: #198754;
+    }
+    
+    /* Clear button */
+    #clearPhotoBtn {
+        transition: all 0.3s ease;
+    }
+    
+    #clearPhotoBtn:hover {
+        background-color: #dc3545;
+        color: white;
+        border-color: #dc3545;
     }
 </style>
 
@@ -189,7 +254,7 @@ $result = $conn->query($sql);
                                         <i class="bi bi-star-fill"></i>
                                     </button>
                                 <?php else: ?>
-                                    <!-- Show disabled state or tooltip explaining why button is hidden -->
+                                    <!-- Show disabled state with tooltip -->
                                     <button type="button" class="btn btn-sm btn-secondary" title="Already involved in election" disabled>
                                         <i class="bi bi-star-fill"></i>
                                     </button>
@@ -230,7 +295,7 @@ $result = $conn->query($sql);
     </div>
 </div>
 
-<!-- ====== CANDIDATE MODAL ====== -->
+<!-- ====== CANDIDATE MODAL WITH PHOTO PREVIEW ====== -->
 <div class="modal fade" id="candidateModal" tabindex="-1" aria-labelledby="candidateModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
@@ -249,11 +314,40 @@ $result = $conn->query($sql);
 
                 <form id="candidateForm" enctype="multipart/form-data">
                     <input type="hidden" name="student_id" id="candidate_student_id">
+                    <input type="hidden" name="election_id" id="election_id" value="2">
 
+                    <!-- Photo Upload with Preview -->
                     <div class="mb-3">
                         <label for="candidate_photo" class="form-label">Candidate Photo <span class="text-danger">*</span></label>
-                        <input type="file" class="form-control" name="candidate_photo" id="candidate_photo" accept="image/*" required>
-                        <div class="form-text">Upload a photo of the candidate (required).</div>
+                        
+                        <!-- Photo Preview Container -->
+                        <div id="photoPreviewContainer" class="mb-2 text-center" style="display: none;">
+                            <div class="p-3 border rounded bg-light">
+                                <img id="photoPreview" src="#" alt="Candidate Photo Preview">
+                                <div class="mt-2">
+                                    <span id="photoFileName" class="text-muted small"></span>
+                                    <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="removePhoto()">
+                                        <i class="bi bi-x-circle"></i> Remove
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- File Input -->
+                        <div class="input-group">
+                            <input type="file" class="form-control" name="candidate_photo" id="candidate_photo" accept="image/*" required>
+                            <button class="btn btn-outline-secondary" type="button" id="clearPhotoBtn" onclick="removePhoto()">
+                                <i class="bi bi-x"></i> Clear
+                            </button>
+                        </div>
+                        <div class="form-text">Upload a photo of the candidate (required). Supported formats: JPG, PNG, GIF, WEBP (Max 5MB)</div>
+                        
+                        <!-- Photo Preview Placeholder -->
+                        <div id="photoPlaceholder" class="text-center p-3 border rounded bg-light mt-2">
+                            <i class="bi bi-image display-6 text-muted"></i>
+                            <p class="text-muted mb-0">No photo selected</p>
+                            <small class="text-muted">Click "Choose File" to upload a candidate photo</small>
+                        </div>
                     </div>
 
                     <div class="row">
@@ -277,9 +371,6 @@ $result = $conn->query($sql);
                         </div>
                     </div>
 
-                    <!-- Hidden election_id field - you need to pass this -->
-                    <input type="hidden" name="election_id" id="election_id" value="2">
-
                     <div id="candidateFeedback" class="mt-2"></div>
                 </form>
             </div>
@@ -302,7 +393,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const proposer = document.getElementById('proposer');
     const feedback = document.getElementById('candidateFeedback');
     const submitBtn = document.getElementById('submitCandidateBtn');
-    const photoInput = document.getElementById('candidate_photo');
+    let photoInput = document.getElementById('candidate_photo');
+    
+    // Photo preview elements
+    const photoPreviewContainer = document.getElementById('photoPreviewContainer');
+    const photoPreview = document.getElementById('photoPreview');
+    const photoFileName = document.getElementById('photoFileName');
+    const photoPlaceholder = document.getElementById('photoPlaceholder');
 
     const candName = document.getElementById('candidateName');
     const candFaculty = document.getElementById('candidateFaculty');
@@ -312,6 +409,108 @@ document.addEventListener('DOMContentLoaded', function() {
     let allStudents = [];
     let candidateId = 0;
 
+    // ===== PHOTO PREVIEW FUNCTIONS =====
+    function previewPhoto(file) {
+        console.log('Previewing photo:', file);
+        
+        if (!file) {
+            console.log('No file provided');
+            hidePhotoPreview();
+            return;
+        }
+
+        // Validate file type
+        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+        if (!validTypes.includes(file.type)) {
+            console.log('Invalid file type:', file.type);
+            feedback.innerHTML = `<div class="alert alert-danger">Please upload a valid image file (JPG, PNG, GIF, WEBP, BMP).</div>`;
+            photoInput.value = '';
+            hidePhotoPreview();
+            return;
+        }
+
+        // Validate file size (max 5MB)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+            console.log('File too large:', file.size);
+            feedback.innerHTML = `<div class="alert alert-danger">File size exceeds 5MB limit. Please compress your image.</div>`;
+            photoInput.value = '';
+            hidePhotoPreview();
+            return;
+        }
+
+        console.log('Reading file with FileReader...');
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            console.log('File loaded successfully');
+            // Show preview
+            photoPreview.src = e.target.result;
+            photoPreviewContainer.style.display = 'block';
+            photoPlaceholder.style.display = 'none';
+            photoFileName.textContent = file.name + ' (' + formatFileSize(file.size) + ')';
+            feedback.innerHTML = ''; // Clear any previous errors
+            
+            // Add success animation
+            photoPreview.style.animation = 'fadeIn 0.5s ease';
+            console.log('Preview displayed');
+        };
+        reader.onerror = function() {
+            console.error('Error reading file:', reader.error);
+            feedback.innerHTML = `<div class="alert alert-danger">Error reading file. Please try again.</div>`;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function hidePhotoPreview() {
+        console.log('Hiding photo preview');
+        photoPreviewContainer.style.display = 'none';
+        photoPlaceholder.style.display = 'block';
+        photoPreview.src = '#';
+        photoFileName.textContent = '';
+    }
+
+    // Make removePhoto globally accessible for onclick
+    window.removePhoto = function() {
+        console.log('Removing photo');
+        photoInput.value = '';
+        hidePhotoPreview();
+        feedback.innerHTML = '';
+        // Reset the file input
+        const newInput = photoInput.cloneNode(true);
+        photoInput.parentNode.replaceChild(newInput, photoInput);
+        // Re-attach event listener
+        newInput.addEventListener('change', handlePhotoChange);
+        document.getElementById('clearPhotoBtn').onclick = window.removePhoto;
+        // Update the reference
+        photoInput = newInput;
+    };
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // ===== PHOTO INPUT EVENT HANDLER =====
+    function handlePhotoChange() {
+        console.log('Photo input changed');
+        console.log('Files:', this.files);
+        
+        if (this.files && this.files.length > 0) {
+            const file = this.files[0];
+            console.log('Selected file:', file.name, file.type, file.size);
+            previewPhoto(file);
+        } else {
+            console.log('No file selected');
+            hidePhotoPreview();
+        }
+    }
+
+    // Attach event listener to photo input
+    photoInput.addEventListener('change', handlePhotoChange);
+    console.log('Photo input listener attached');
+
+    // ===== DROPDOWN FUNCTIONS =====
     function rebuildDropdowns() {
         const s1 = supporter1;
         const s2 = supporter2;
@@ -351,7 +550,9 @@ document.addEventListener('DOMContentLoaded', function() {
     supporter2.addEventListener('change', rebuildDropdowns);
     proposer.addEventListener('change', rebuildDropdowns);
 
+    // ===== MODAL SHOW EVENT =====
     modal.addEventListener('show.bs.modal', function(event) {
+        console.log('Modal showing');
         const button = event.relatedTarget;
         const studentId = button.getAttribute('data-student-id');
         candidateId = studentId;
@@ -362,10 +563,14 @@ document.addEventListener('DOMContentLoaded', function() {
         candBatch.textContent = button.getAttribute('data-student-batch') || '—';
         candSemester.textContent = button.getAttribute('data-student-semester') || '—';
 
+        // Reset photo preview
+        photoInput.value = '';
+        hidePhotoPreview();
+        
+        // Reset dropdowns
         supporter1.innerHTML = '<option value="">Select supporter…</option>';
         supporter2.innerHTML = '<option value="">Select supporter…</option>';
         proposer.innerHTML = '<option value="">Select proposer…</option>';
-        photoInput.value = '';
         feedback.innerHTML = '';
 
         fetch('get_supporters.php?student_id=' + studentId)
@@ -383,21 +588,59 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
 
+    // ===== MODAL HIDDEN EVENT =====
+    modal.addEventListener('hidden.bs.modal', function() {
+        console.log('Modal hidden');
+        // Reset everything when modal is closed
+        photoInput.value = '';
+        hidePhotoPreview();
+        feedback.innerHTML = '';
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Mark as Candidate';
+        
+        // Reset the file input
+        const newInput = photoInput.cloneNode(true);
+        photoInput.parentNode.replaceChild(newInput, photoInput);
+        newInput.addEventListener('change', handlePhotoChange);
+        document.getElementById('clearPhotoBtn').onclick = window.removePhoto;
+        photoInput = newInput;
+    });
+
+    // ===== VALIDATION =====
     function validateForm() {
+        // Check photo
         if (!photoInput.files || photoInput.files.length === 0) {
             feedback.innerHTML = `<div class="alert alert-danger">Please upload a candidate photo.</div>`;
+            photoInput.focus();
             return false;
         }
+        
+        // Check file type and size
+        const file = photoInput.files[0];
+        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+        if (!validTypes.includes(file.type)) {
+            feedback.innerHTML = `<div class="alert alert-danger">Please upload a valid image file (JPG, PNG, GIF, WEBP, BMP).</div>`;
+            return false;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            feedback.innerHTML = `<div class="alert alert-danger">File size exceeds 5MB limit.</div>`;
+            return false;
+        }
+
+        // Check supporters and proposer
         const selects = [supporter1, supporter2, proposer];
-        for (let sel of selects) {
-            if (!sel.value) {
-                feedback.innerHTML = `<div class="alert alert-danger">Please select a ${sel.id.replace('supporter', 'supporter ')}.</div>`;
+        const selectNames = ['Supporter 1', 'Supporter 2', 'Proposer'];
+        for (let i = 0; i < selects.length; i++) {
+            if (!selects[i].value) {
+                feedback.innerHTML = `<div class="alert alert-danger">Please select a ${selectNames[i]}.</div>`;
+                selects[i].focus();
                 return false;
             }
         }
         return true;
     }
 
+    // ===== SUBMIT =====
     submitBtn.addEventListener('click', function() {
         feedback.innerHTML = '';
         if (!validateForm()) return;
@@ -431,12 +674,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 let msg = data.message || 'Something went wrong.';
                 if (data.debug) msg += `<br><small class="text-muted">${data.debug}</small>`;
                 feedback.innerHTML = `<div class="alert alert-danger">${msg}</div>`;
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Mark as Candidate';
             }
         })
         .catch(error => {
             feedback.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
-        })
-        .finally(() => {
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Mark as Candidate';
         });
