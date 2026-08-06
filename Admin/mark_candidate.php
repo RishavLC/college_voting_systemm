@@ -1,4 +1,6 @@
 <?php
+session_start();
+if (!isset($_SESSION['admin_id'])) header("Location: login.php");
 // Never let a PHP warning/fatal error leak raw HTML into what's supposed
 // to be a JSON response — that's what turns into "Network error" on the
 // frontend (the browser's fetch().json() call chokes on non-JSON output).

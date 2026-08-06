@@ -1,4 +1,7 @@
 <?php
+
+session_start();
+if (!isset($_SESSION['admin_id'])) header("Location: login.php");
 // Admin: OTP Lookup from student table.
 // Shows the current OTP for each student, and whether it has been used (voting_status).
 // No separate otp_requests table needed.

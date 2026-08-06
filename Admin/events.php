@@ -1,4 +1,6 @@
 <?php
+session_start();
+if (!isset($_SESSION['admin_id'])) header("Location: login.php");
 require_once '../Database/db_connect.php';
 
 $batch = $_GET['batch'] ?? '';

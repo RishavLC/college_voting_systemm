@@ -7,6 +7,18 @@ if (!isset($_SESSION['admin_id'])) {
 
 require_once '../Database/db_connect.php';
 
+// Define program options
+$programs = ['BCA', 'BIM/BITM', 'BBS', 'Bsc. Csit', 'BHM'];
+
+// Define semester options for each program
+$semesterOptions = [
+    'BCA' => [1,2,3,4,5,6,7,8],
+    'BIM/BITM' => [1,2,3,4,5,6,7,8],
+    'BBS' => [1,2,3,4],
+    'Bsc. Csit' => [1,2,3,4,5,6,7,8],
+    'BHM' => [1,2,3,4,5,6,7,8]
+];
+
 $error = '';
 $success = '';
 $student = null;
@@ -34,18 +46,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $semester = intval($_POST['student_semester']);
     $phone = trim($_POST['student_phone']);
     $email = trim($_POST['student_email']);
-    $email = $email === '' ? null : $email; // optional — store NULL if blank
+    $email = $email === '' ? null : $email;
     $voting_status = isset($_POST['voting_status']) ? 1 : 0;
     $is_candidate = isset($_POST['is_candidate']) ? 1 : 0;
 
     // Validate
-    if (empty($name) || empty($batch) || empty($faculty) || $semester < 1 || $semester > 8) {
+    if (empty($name) || empty($batch) || empty($faculty) || $semester < 1) {
         $error = "All required fields (Name, Batch, Faculty, Semester) must be filled correctly.";
+    } elseif (!in_array($faculty, $programs)) {
+        $error = "Please select a valid program.";
+    } elseif (isset($semesterOptions[$faculty]) && !in_array($semester, $semesterOptions[$faculty])) {
+        $error = "Invalid semester for the selected program.";
     } elseif ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email format.";
     } else {
-        // Check if email already used by another student (only matters
-        // if an email was actually entered — NULLs never conflict)
+        // Check if email already used by another student
         $emailTaken = false;
         if ($email !== null) {
             $check = $conn->prepare("SELECT student_id FROM student WHERE student_email = ? AND student_id != ?");
@@ -56,7 +71,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($emailTaken) {
             $error = "This email is already registered by another student.";
         } else {
-            // ✅ FIXED: correct type string: "sssissiii" (9 specifiers)
             $update = $conn->prepare("UPDATE student SET 
                 student_name = ?, 
                 student_batch = ?, 
@@ -95,7 +109,7 @@ include 'header.php';
         <?php if ($success): ?>
             <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
         <?php endif; ?>
-        <form method="POST">
+        <form method="POST" id="editStudentForm">
             <div class="row g-3">
                 <div class="col-md-6">
                     <label>Student ID</label>
@@ -111,12 +125,32 @@ include 'header.php';
                     <input type="text" name="student_batch" class="form-control" value="<?= htmlspecialchars($student['student_batch']) ?>" required>
                 </div>
                 <div class="col-md-6">
-                    <label>Faculty *</label>
-                    <input type="text" name="student_faculty" class="form-control" value="<?= htmlspecialchars($student['student_faculty']) ?>" required>
+                    <label>Program *</label>
+                    <select name="student_faculty" id="programSelect" class="form-control" required>
+                        <option value="">Select Program...</option>
+                        <?php foreach ($programs as $program): ?>
+                            <option value="<?= $program ?>" 
+                                <?= ($student['student_faculty'] == $program) ? 'selected' : '' ?>>
+                                <?= $program ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <div class="col-md-6">
-                    <label>Semester *</label>
-                    <input type="number" name="student_semester" class="form-control" min="1" max="8" value="<?= htmlspecialchars($student['student_semester']) ?>" required>
+                    <label>Semester/Year *</label>
+                    <select name="student_semester" id="semesterSelect" class="form-control" required>
+                        <option value="">Select Semester/Year...</option>
+                        <?php 
+                        $currentSemester = $student['student_semester'];
+                        $defaultSemesters = [1,2,3,4,5,6,7,8];
+                        foreach ($defaultSemesters as $sem): 
+                        ?>
+                            <option value="<?= $sem ?>" 
+                                <?= ($currentSemester == $sem) ? 'selected' : '' ?>>
+                                <?= $sem ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <div class="col-md-6">
                     <label>Phone</label>
@@ -144,4 +178,93 @@ include 'header.php';
         </form>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const programSelect = document.getElementById('programSelect');
+    const semesterSelect = document.getElementById('semesterSelect');
+
+    // Semester options for each program
+    const semesterOptions = {
+        'BCA': [1, 2, 3, 4, 5, 6, 7, 8],
+        'BIM/BITM': [1, 2, 3, 4, 5, 6, 7, 8],
+        'BBS': [1, 2, 3, 4],
+        'Bsc. Csit': [1, 2, 3, 4, 5, 6, 7, 8],
+        'BHM': [1, 2, 3, 4, 5, 6, 7, 8]
+    };
+
+    // Store current semester value
+    const currentSemester = '<?= $student['student_semester'] ?>';
+
+    // Update semester dropdown based on selected program
+    function updateSemesterDropdown(program) {
+        // Clear current options
+        semesterSelect.innerHTML = '<option value="">Select Semester...</option>';
+        
+        // Get semester list for selected program
+        const semesters = semesterOptions[program] || [];
+        
+        if (semesters.length === 0) {
+            semesterSelect.disabled = true;
+            return;
+        }
+
+        semesterSelect.disabled = false;
+        
+        // Add options
+        semesters.forEach(sem => {
+            const option = document.createElement('option');
+            option.value = sem;
+            option.textContent = sem;
+            // Preserve selected value if it's valid for this program
+            if (currentSemester == sem && semesters.includes(parseInt(currentSemester))) {
+                option.selected = true;
+            }
+            semesterSelect.appendChild(option);
+        });
+    }
+
+    // Event listener for program change
+    programSelect.addEventListener('change', function() {
+        const selectedProgram = this.value;
+        updateSemesterDropdown(selectedProgram);
+    });
+
+    // Validate on form submit
+    document.getElementById('editStudentForm').addEventListener('submit', function(e) {
+        const program = programSelect.value;
+        const semester = semesterSelect.value;
+        
+        if (!program) {
+            alert('Please select a program');
+            e.preventDefault();
+            return false;
+        }
+        
+        if (!semester) {
+            alert('Please select a semester');
+            e.preventDefault();
+            return false;
+        }
+        
+        // Validate semester range for selected program
+        const validSemesters = semesterOptions[program] || [];
+        if (!validSemesters.includes(parseInt(semester))) {
+            alert('Invalid semester for the selected program. Please select a valid semester.');
+            e.preventDefault();
+            return false;
+        }
+        
+        return true;
+    });
+
+    // Trigger initial update with current program
+    if (programSelect.value) {
+        updateSemesterDropdown(programSelect.value);
+    } else {
+        semesterSelect.disabled = true;
+    }
+});
+</script>
+
 <?php include 'footer.php'; ?>
