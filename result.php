@@ -1,4 +1,6 @@
 <?php
+session_start();
+if (!isset($_SESSION['admin_id'])) header("Location: Admin/login.php");
 require_once 'Database/db_connect.php';
 
 // ------------------------------------------------------------------
@@ -119,7 +121,7 @@ function cand_initials($name) {
     <link rel="icon" href="assets/img/logo.png">
 </head>
 <body class="results-no-scroll">
-<div class="results-page">
+<div class="results-page" id="resultsPage">
 
     <!-- ============ Header: logo + election details + filter, single fixed row ============ -->
     <header class="results-header-bar">
@@ -227,7 +229,17 @@ function cand_initials($name) {
                                             $is_winner = ($cand['votes'] == $max_votes && $max_votes > 0);
                                             $color = cand_color($i, $palette);
                                         ?>
-                                        <tr class="<?= $is_winner ? 'is-winner-row' : '' ?>">
+                                        <!--
+                                            IMPORTANT: we deliberately do NOT render `is-winner-row` here even
+                                            though $is_winner is known server-side. If we did, the winner
+                                            highlight/pulse and the trophy badge below would already be sitting
+                                            in the DOM before the reveal animation runs, spoiling the result
+                                            the instant the row fades in. Instead we stash the fact in
+                                            data-winner and let JS add `is-winner-row` (and reveal the badge)
+                                            only once that candidate's bar has actually finished animating to
+                                            its real value — see runParallelReveal()/animateOneCandidate() below.
+                                        -->
+                                        <tr <?= $is_winner ? 'data-winner="true"' : '' ?>>
                                             <td><?= $rank++ ?></td>
                                             <td class="candidate-label">
                                                 <div class="d-flex align-items-center gap-2">
@@ -241,7 +253,13 @@ function cand_initials($name) {
                                                     <span>
                                                         <?= htmlspecialchars($cand['name']) ?>
                                                         <?php if ($is_winner): ?>
-                                                            <span class="winner-badge ms-1"><i class="bi bi-trophy"></i> Winner</span>
+                                                            <!--
+                                                                Rendered but kept fully inert (invisible, non-
+                                                                interactive, hidden from the accessibility tree)
+                                                                via .badge-pending + aria-hidden until JS reveals
+                                                                it at the true reveal moment.
+                                                            -->
+                                                            <span class="winner-badge ms-1 badge-pending" aria-hidden="true"><i class="bi bi-trophy"></i> Winner</span>
                                                         <?php endif; ?>
                                                     </span>
                                                 </div>
@@ -300,6 +318,7 @@ function cand_initials($name) {
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <img src="assets/img/logo.png" alt="Himalaya Darshan College" class="winner-modal-logo">
                 <div class="crown"><i class="bi bi-award-fill"></i></div>
                 <?php if (!empty($winner['photo'])): ?>
                     <div class="winner-photo" style="padding:0;overflow:hidden;">
@@ -320,6 +339,21 @@ function cand_initials($name) {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    <?php if ($winner): ?>
+    // ---- Fully hide the results page (not just fade it) behind the winner
+    // modal the instant it opens, and bring it back the instant it closes —
+    // tied directly to Bootstrap's own show/hide events so there's no extra
+    // lag layered on top of the modal's own open/close timing. ----
+    const resultsPageEl = document.getElementById('resultsPage');
+    const winnerModalEl = document.getElementById('winnerModal');
+    winnerModalEl.addEventListener('show.bs.modal', () => {
+        resultsPageEl.classList.add('is-behind-modal');
+    });
+    winnerModalEl.addEventListener('hidden.bs.modal', () => {
+        resultsPageEl.classList.remove('is-behind-modal');
+    });
+    <?php endif; ?>
+
     <?php if ($election && count($candidates) > 0): ?>
         // ---- Chart.js bar chart ----
         // Built with zeroed-out data on purpose: if we animated to the real
@@ -332,6 +366,73 @@ document.addEventListener('DOMContentLoaded', function() {
         const realData = <?= json_encode(array_column($candidates, 'votes')) ?>;
         const colors = <?= json_encode(array_map(fn($i) => cand_color($i, $palette), array_keys($candidates))) ?>;
         const zeroData = realData.map(() => 0);
+
+        // Bar-grow animation, KBC-style — but with the standings kept secret
+        // for almost the whole animation:
+        //
+        // Phase 1 — SUSPENSE: every bar wobbles near a shared, roughly equal
+        //           "decoy" height (based on the average vote count, not each
+        //           candidate's real value), so all candidates look neck-and-
+        //           neck the whole time. The wobble is random per candidate
+        //           and has nothing to do with real standings, so there's no
+        //           way to read who's ahead from it.
+        // Phase 2 — REVEAL: right at the end, every bar smoothly (with one
+        //           quick settling bounce) moves from wherever the decoy
+        //           wobble left it to its real value, all at once — this is
+        //           the only moment the true standings become visible.
+        //
+        // All candidates share the same SUSPENSE_MS + REVEAL_MS timeline, so
+        // nobody locks in early and gives the result away ahead of everyone
+        // else. The winner badge / row highlight are likewise only ever
+        // attached to the DOM once a candidate's own reveal has completed
+        // (see animateOneCandidate below), so the markup itself can't give
+        // anything away early either.
+        const SUSPENSE_MS = 3200;   // how long bars dance around the shared decoy height
+        const REVEAL_MS = 1000;     // final stretch where bars settle onto their true values
+        const BAR_ANIM_MS = SUSPENSE_MS + REVEAL_MS;
+        const MAX_STAGGER_MS = 150; // tiny random head-start per candidate, purely cosmetic
+
+        const SUSPENSE_PERIOD_MS = 260;   // how fast the decoy wobble oscillates
+        const SUSPENSE_JITTER = 0.28;     // how far the decoy wobble can drift from the shared baseline
+
+        const REVEAL_OSCILLATIONS = 2.5;  // quick settle-bounce once the real value is revealed
+        const REVEAL_PERIOD_MS = REVEAL_MS / REVEAL_OSCILLATIONS;
+        const REVEAL_DECAY = 5;
+
+        // A shared, roughly-equal decoy baseline every bar wobbles around
+        // during the suspense phase — the AVERAGE vote count, not any
+        // individual candidate's real value, and the same equal-share width
+        // for every bar, so there's nothing to read into it.
+        const decoyVotes = realData.length ? realData.reduce((a, b) => a + b, 0) / realData.length : 0;
+        const decoyWidth = realData.length ? 100 / realData.length : 0;
+
+        // Random (not standings-based) wobble parameters, one set per
+        // candidate, generated once so each bar's dance looks distinct but
+        // conveys nothing about who's actually winning.
+        const wobbleSeeds = realData.map(() => ({
+            phase1: Math.random() * Math.PI * 2,
+            phase2: Math.random() * Math.PI * 2,
+        }));
+
+        // Value the decoy wobble is at for a given elapsed time — oscillates
+        // around decoyBase using two blended sine waves so it drifts rather
+        // than snapping, without ever trending toward the real value.
+        function decoyValueAt(elapsedMs, decoyBase, seed) {
+            const wobble = 0.6 * Math.sin((2 * Math.PI * elapsedMs) / SUSPENSE_PERIOD_MS + seed.phase1)
+                         + 0.4 * Math.sin((2 * Math.PI * elapsedMs) / (SUSPENSE_PERIOD_MS * 1.7) + seed.phase2);
+            return Math.max(0, decoyBase * (1 + SUSPENSE_JITTER * wobble));
+        }
+
+        // Eases (with one quick settling bounce) from `start` to `target` as
+        // elapsedMs goes from 0 to REVEAL_MS.
+        function revealValueAt(elapsedMs, start, target) {
+            if (elapsedMs <= 0) return start;
+            if (elapsedMs >= REVEAL_MS) return target;
+            const t = elapsedMs / REVEAL_MS;
+            const envelope = Math.pow(2, -REVEAL_DECAY * t);
+            const factor = envelope * Math.sin((elapsedMs - REVEAL_PERIOD_MS / 4) * (2 * Math.PI) / REVEAL_PERIOD_MS) + 1;
+            return start + (target - start) * factor;
+        }
 
         const voteChart = new Chart(ctx, {
             type: 'bar',
@@ -351,21 +452,17 @@ document.addEventListener('DOMContentLoaded', function() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: {
-                    duration: 1500,
-                    easing: 'easeOutElastic',
-                    delay: (context) => {
-                        // stagger each bar so they pop up one after another, elastically
-                        return context.type === 'data' && context.mode === 'default'
-                            ? context.dataIndex * 220
-                            : 0;
-                    }
-                },
+                // Chart.js's own animation system is turned off — we drive the
+                // bar heights ourselves every frame (see runParallelReveal below)
+                // so we can control bounce speed, bounce count, and sequencing.
+                animation: false,
                 scales: {
                     y: {
                         beginAtZero: true,
                         ticks: { stepSize: 1 },
-                        suggestedMax: Math.max(...realData) + Math.ceil(Math.max(...realData) * 0.15) + 1
+                        // extra headroom so both the decoy wobble and the final
+                        // reveal bounce have room without getting clipped
+                        suggestedMax: Math.max(Math.max(...realData) * 1.4, decoyVotes * (1 + SUSPENSE_JITTER) * 1.4) + 1
                     }
                 },
                 plugins: {
@@ -382,6 +479,121 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
+
+        // Animates ONE candidate's chart bar and its matching table row
+        // together: wobbles near the shared decoy height for SUSPENSE_MS,
+        // then eases (with one settling bounce) onto its real value over the
+        // final REVEAL_MS, then calls onDone. Every other chart bar's value
+        // in dataArray is left untouched, so candidates who haven't started
+        // yet stay at 0 and candidates who are mid-animation keep updating
+        // independently.
+        //
+        // `isWinner` is passed in from runParallelReveal (computed from the
+        // REAL data, not from any pre-rendered class) and is only acted on
+        // once elapsed >= BAR_ANIM_MS — i.e. only once this candidate's bar
+        // has actually landed on its true, final value. That's the single
+        // point where `.is-winner-row` gets added to the row and the trophy
+        // badge is flipped from `.badge-pending` to `.badge-revealed`, so
+        // there is no way to read the outcome before that moment.
+        function animateOneCandidate(chart, dataArray, index, row, targetVotes, targetWidth, seed, isWinner, onDone) {
+            const startTime = performance.now();
+            if (row) row.classList.add('row-in');
+            const bar = row ? row.querySelector('.bar-fill') : null;
+            const countEl = row ? row.querySelector('.vote-count-badge .count-up') : null;
+            let revealStartVotes = decoyVotes;
+            let revealStartWidth = decoyWidth;
+
+            function frame(now) {
+                const elapsed = now - startTime;
+
+                if (elapsed >= BAR_ANIM_MS) {
+                    dataArray[index] = targetVotes;
+                    chart.data.datasets[0].data = dataArray;
+                    chart.update('none');
+                    if (bar) bar.style.width = targetWidth + '%';
+                    if (countEl) countEl.textContent = targetVotes;
+
+                    // ---- Reveal winner cues, but only right here, right
+                    // now — after the real value has actually landed. ----
+                    if (isWinner && row) {
+                        row.classList.add('is-winner-row');
+                        const badge = row.querySelector('.winner-badge');
+                        if (badge) {
+                            badge.classList.remove('badge-pending');
+                            badge.classList.add('badge-revealed');
+                            badge.removeAttribute('aria-hidden');
+                        }
+                    }
+
+                    onDone();
+                    return;
+                }
+
+                if (elapsed < SUSPENSE_MS) {
+                    // ---- Phase 1: suspense — wobble near the shared decoy
+                    // height, telling the audience nothing about who's ahead.
+                    const votes = decoyValueAt(elapsed, decoyVotes, seed);
+                    const width = decoyValueAt(elapsed, decoyWidth, seed);
+                    dataArray[index] = votes;
+                    chart.data.datasets[0].data = dataArray;
+                    chart.update('none');
+                    if (bar) bar.style.width = Math.max(0, Math.min(width, 100)) + '%';
+                    if (countEl) countEl.textContent = Math.round(votes);
+
+                    // Remember exactly where the wobble left off, so phase 2
+                    // eases from this point rather than jumping.
+                    revealStartVotes = votes;
+                    revealStartWidth = width;
+                } else {
+                    // ---- Phase 2: reveal — ease from wherever the wobble
+                    // left off onto the real value, with one quick settle.
+                    const revealElapsed = elapsed - SUSPENSE_MS;
+                    const votes = revealValueAt(revealElapsed, revealStartVotes, targetVotes);
+                    const width = revealValueAt(revealElapsed, revealStartWidth, targetWidth);
+                    dataArray[index] = Math.max(0, votes);
+                    chart.data.datasets[0].data = dataArray;
+                    chart.update('none');
+                    if (bar) bar.style.width = Math.max(0, Math.min(width, 100)) + '%';
+                    if (countEl) countEl.textContent = Math.round(Math.max(0, votes));
+                }
+
+                requestAnimationFrame(frame);
+            }
+            requestAnimationFrame(frame);
+        }
+
+        // Kicks off every candidate's animation at (almost) the same moment
+        // — each with its own random decoy-wobble seed and a tiny random
+        // head start, purely cosmetic — and calls onAllDone only once every
+        // single candidate has locked onto its real value. Because everyone
+        // wobbles near the same shared decoy height for the whole suspense
+        // phase and only reveals their true value in the last stretch,
+        // together, there's no point before that where the standings can be
+        // read off the screen. `isWinner` is computed here from the real
+        // vote totals (never from a pre-rendered DOM class) and handed to
+        // animateOneCandidate so it can gate the winner reveal correctly.
+        function runParallelReveal(chart, targets, rows, onAllDone) {
+            const dataArray = targets.map(() => 0);
+            const n = targets.length;
+            let doneCount = 0;
+            const maxVotes = targets.length ? Math.max(...targets) : 0;
+
+            targets.forEach((target, index) => {
+                const row = rows[index];
+                const bar = row ? row.querySelector('.bar-fill') : null;
+                const targetWidth = bar ? parseFloat(bar.dataset.width) || 0 : 0;
+                const startDelay = Math.random() * MAX_STAGGER_MS;
+                const seed = wobbleSeeds[index];
+                const isWinner = maxVotes > 0 && target === maxVotes;
+
+                setTimeout(() => {
+                    animateOneCandidate(chart, dataArray, index, row, target, targetWidth, seed, isWinner, () => {
+                        doneCount++;
+                        if (doneCount === n) onAllDone();
+                    });
+                }, startDelay);
+            });
+        }
 
         // ---- Count-up animation for any numeric badge ----
         function animateCount(el, target, duration = 1100, delay = 0) {
@@ -403,45 +615,50 @@ document.addEventListener('DOMContentLoaded', function() {
             animateCount(el, parseInt(el.dataset.target, 10) || 0, 1200, 300);
         });
 
-        // Candidate rows: bars fill AND their vote numbers count up together, staggered row by row.
-        function revealTableBars() {
-            const rows = document.querySelectorAll('#candidateTableBody tr');
-            rows.forEach((row, i) => {
-                const rowDelay = i * 180;
-                const bar = row.querySelector('.bar-fill');
-                const countEl = row.querySelector('.vote-count-badge .count-up');
+        // (Chart-bar and table-row bouncing for each candidate is now handled
+        // together, all in parallel, by animateOneCandidate/runParallelReveal above.)
 
-                setTimeout(() => {
-                    if (bar) bar.style.width = parseFloat(bar.dataset.width) + '%';
-                    row.classList.add('row-in');
-                }, rowDelay);
-
-                if (countEl) {
-                    animateCount(countEl, parseInt(countEl.dataset.target, 10) || 0, 900, rowDelay);
-                }
-            });
-        }
-
-        // ---- Colorful confetti burst, fired the moment the winner modal is visible ----
+        // ---- Colorful confetti covering the whole page, fired the moment
+        // the winner modal is visible. Since the results page underneath is
+        // now fully hidden, confetti is the only thing moving on screen, so
+        // it's made denser and spread across the full width/height rather
+        // than concentrated near the center. ----
         function fireConfetti() {
             if (typeof confetti !== 'function') return;
             const confettiColors = ['#1e4d92', '#f4820a', '#16a34a', '#e11d48', '#6f42c1', '#eab308', '#06b6d4', '#ec4899'];
 
             // Big center burst
             confetti({
-                particleCount: 140,
-                spread: 100,
-                startVelocity: 45,
-                origin: { y: 0.45 },
+                particleCount: 180,
+                spread: 130,
+                startVelocity: 50,
+                origin: { y: 0.4 },
                 colors: confettiColors,
                 zIndex: 2000
             });
 
-            // Side cannons streaming in from both edges for a couple of seconds
-            const end = Date.now() + 2200;
+            // A handful of extra bursts scattered across the top of the
+            // page so confetti rains down over the entire width, not just
+            // the middle.
+            [0.08, 0.28, 0.5, 0.72, 0.92].forEach((x, i) => {
+                setTimeout(() => {
+                    confetti({
+                        particleCount: 60,
+                        spread: 80,
+                        startVelocity: 40,
+                        origin: { x, y: -0.05 },
+                        colors: confettiColors,
+                        zIndex: 2000
+                    });
+                }, i * 120);
+            });
+
+            // Side cannons streaming in from both edges for a few seconds
+            const end = Date.now() + 3200;
             (function frame() {
-                confetti({ particleCount: 4, angle: 60, spread: 65, origin: { x: 0, y: 0.6 }, colors: confettiColors, zIndex: 2000 });
-                confetti({ particleCount: 4, angle: 120, spread: 65, origin: { x: 1, y: 0.6 }, colors: confettiColors, zIndex: 2000 });
+                confetti({ particleCount: 6, angle: 60, spread: 70, origin: { x: 0, y: 0.7 }, colors: confettiColors, zIndex: 2000 });
+                confetti({ particleCount: 6, angle: 120, spread: 70, origin: { x: 1, y: 0.7 }, colors: confettiColors, zIndex: 2000 });
+                confetti({ particleCount: 3, angle: 90, spread: 100, startVelocity: 30, origin: { x: Math.random(), y: -0.05 }, colors: confettiColors, zIndex: 2000 });
                 if (Date.now() < end) requestAnimationFrame(frame);
             })();
         }
@@ -461,7 +678,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Stage 2: once the 3s slide finishes, BOTH cards reveal together —
         // the bars grow for real (now that they're visible) and the
         // candidate breakdown fades in with its own staggered bars/counters.
-        // The winner modal only fires after both have fully finished animating.
+        // The winner modal only fires after every candidate has fully
+        // finished animating (see runParallelReveal above).
         let revealed = false;
         function revealResults() {
             if (revealed) return;
@@ -469,29 +687,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
             stageChart.classList.add('settled');
 
-            // Grow the chart bars now that the card is actually on screen.
-            voteChart.data.datasets[0].data = realData;
-            voteChart.update();
+            // Grow the chart bars now that the card is actually on screen —
+            // every candidate wobbles near the same shared decoy height
+            // together, then all reveal their true value together right at
+            // the very end, so the standings stay a mystery until then.
+            const rows = Array.from(document.querySelectorAll('#candidateTableBody tr'));
 
-            // Reveal the candidate breakdown alongside it.
+            // Reveal the candidate breakdown card alongside the chart (the
+            // rows themselves fade in as their bounce starts).
             stageList.classList.add('is-visible');
-            revealTableBars();
 
-            // Work out how long each card's animation will take so the
-            // winner modal waits for whichever one finishes last.
-            const n = labels.length;
-            const chartAnimMs = 1500 + (n - 1) * 220 + 300;
-            const tableAnimMs = 900 + (n - 1) * 180 + 300;
-            const waitMs = Math.max(chartAnimMs, tableAnimMs);
-
-            <?php if ($winner): ?>
-            const winnerModalEl = document.getElementById('winnerModal');
-            winnerModalEl.addEventListener('shown.bs.modal', fireConfetti);
-            setTimeout(() => {
+            runParallelReveal(voteChart, realData, rows, () => {
+                <?php if ($winner): ?>
+                winnerModalEl.addEventListener('shown.bs.modal', fireConfetti);
                 const wm = new bootstrap.Modal(winnerModalEl);
                 wm.show();
-            }, waitMs);
-            <?php endif; ?>
+                <?php endif; ?>
+            });
         }
 
         // Fire the moment the slide's transform transition ends...

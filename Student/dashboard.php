@@ -238,7 +238,7 @@ function initials_of($name) {
         <div class="no-election-state">
             <h2 style="color: var(--navy);">No Active Election</h2>
             <p>There is no active election for your batch, faculty, and semester right now.</p>
-            <a href="student_verify.php" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i> Go Back</a>
+            <a href="verify_otp.php" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i> Go Back</a>
         </div>
     <?php else: ?>
         <!-- ============ BALLOT (pre-vote) ============ -->

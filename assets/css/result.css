@@ -432,15 +432,16 @@ label{ font-weight:600; font-size:0.82rem; color:var(--muted); text-transform:up
 .chart-container{ height:300px; margin:1rem 0; }
 .candidate-bar-container{ margin:0.6rem 0; }
 .candidate-label{ font-weight:600; }
-.bar-wrapper{ background:var(--primary-shade); border-radius:30px; height:32px; overflow:hidden; position:relative; }
-.bar-fill{ height:100%; border-radius:30px; width:0%; transition:width 1.8s cubic-bezier(.34,1.56,.64,1); background:linear-gradient(90deg,var(--secondary),var(--tertiary)); }
+.bar-wrapper{ background:var(--primary-shade); border-radius:30px; height:2rem; overflow:hidden; position:relative; }
+.bar-fill{ height:100%; border-radius:30px; width:0%; background:linear-gradient(90deg,var(--secondary),var(--tertiary)); }
+/* Width is animated frame-by-frame from JS (custom elastic bounce), not via CSS transition. */
 .bar-text{ position:absolute; right:15px; top:50%; transform:translateY(-50%); font-weight:700; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.3); font-size:.9rem; }
 .vote-count-badge{ background:var(--secondary); color:#fff; padding:0.25rem 0.85rem; border-radius:30px; font-size:0.85rem; font-weight:700; }
 .no-data{ padding:3.2rem 0; text-align:center; color:var(--muted); }
 .election-badge{ background:var(--success); color:#fff; padding:0.4rem 1.1rem; border-radius:30px; font-size:0.85rem; font-weight:600; }
 .winner-badge{ background:linear-gradient(120deg,var(--tertiary-light),var(--tertiary)); color:#fff; padding:0.2rem 0.75rem; border-radius:30px; font-weight:700; font-size:0.78rem; }
 .cand-avatar{
-  width:34px; height:34px; border-radius:50%; color:#fff; font-weight:700; font-size:0.78rem;
+  width:2.125rem; height:2.125rem; border-radius:50%; color:#fff; font-weight:700; font-size:0.78rem;
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }
 
@@ -455,12 +456,42 @@ html.results-no-scroll, body.results-no-scroll{
   margin:0;
 }
 
+/* ---- Fluid scaling for the smart-board / large-display case ----
+   Scoped to html.results-no-scroll only (this page sets that class on
+   <html>, nothing else in the site does), so it can't affect any other
+   page. Almost everything on this page is already sized in rem, so
+   scaling the root font-size scales the whole page proportionally —
+   logo, badges, table text, chart card, modal, etc. — whether it's
+   rendered on a phone, a laptop, or an 86" board. The clamp() blends
+   viewport width and height so it responds sensibly to both very wide
+   (landscape TV/board) and very tall (portrait board) viewports, and is
+   capped at both ends so it never gets unreadably tiny or comically
+   huge. Nothing on the page is left in raw px for layout purposes below
+   this point — the handful of icon/avatar sizes that used to be fixed
+   px have been converted to rem so they scale along with everything
+   else (see .rhb-logo img, .cand-avatar, .bar-wrapper, .winner-photo,
+   .winner-modal-logo, .rhb-field select further down). */
+html.results-no-scroll{
+  font-size:clamp(14px, 0.55vw + 0.6vh, 32px);
+}
+
+
 .results-page{
   height:100vh;
   height:100dvh; /* modern browsers: accounts for mobile browser chrome */
   display:flex;
   flex-direction:column;
   background:var(--bg);
+}
+
+/* Fully hidden the instant the winner modal opens (no fade, no delay) —
+   nothing behind the modal (chart, table, standings) should linger on
+   screen for even a moment, and it should come back the instant the modal
+   is closed, in lockstep with Bootstrap's own show/hide events (see JS:
+   show.bs.modal / hidden.bs.modal). */
+.results-page.is-behind-modal{
+  opacity:0;
+  visibility:hidden;
 }
 
 /* ---- Header bar: logo | title & badges | filter, all in one row ---- */
@@ -476,7 +507,7 @@ html.results-no-scroll, body.results-no-scroll{
   z-index:20;
 }
 .rhb-logo{ flex:0 0 auto; }
-.rhb-logo img{ width:52px; height:52px; object-fit:contain; }
+.rhb-logo img{ width:5.5rem; height:5.5rem; object-fit:contain; }
 
 .rhb-info{ flex:1 1 auto; min-width:0; }
 .rhb-eyebrow{
@@ -501,7 +532,7 @@ html.results-no-scroll, body.results-no-scroll{
 }
 .rhb-field{ display:flex; flex-direction:column; }
 .rhb-field label{ margin-bottom:0.2rem; font-size:0.66rem; }
-.rhb-field select{ width:128px; padding:0.35rem 0.6rem; font-size:0.85rem; }
+.rhb-field select{ width:8rem; padding:0.35rem 0.6rem; font-size:0.85rem; }
 .rhb-field-btn{ padding-bottom:1px; }
 
 /* ---- Body: everything below the header, exactly fills remaining space ---- */
@@ -601,7 +632,10 @@ html.results-no-scroll, body.results-no-scroll{
   transform:translateY(0);
 }
 
-/* Winner's row gets a soft recurring highlight pulse once revealed */
+/* Winner's row gets a soft recurring highlight pulse once revealed.
+   NOTE: `.is-winner-row` is now added by JS only after that candidate's
+   bar has finished its real reveal animation (see result.php), so this
+   pulse can no longer fire early and spoil the outcome. */
 @keyframes winnerRowPulse{
   0%,100%{ background-color:transparent; }
   50%{ background-color:var(--tertiary-soft); }
@@ -610,17 +644,41 @@ html.results-no-scroll, body.results-no-scroll{
   animation:winnerRowPulse 2.2s ease-in-out 0.6s 3;
 }
 
-/* Winner badge gets a gentle breathing scale for extra flair */
+/* Winner badge gets a gentle breathing scale for extra flair, but ONLY
+   once revealed (see .badge-pending / .badge-revealed below) — before
+   that it must stay invisible so it can't spoil the result. */
 @keyframes winnerBadgeBreathe{
   0%,100%{ transform:scale(1); }
   50%{ transform:scale(1.08); }
 }
 .winner-badge{
   display:inline-flex;
+}
+
+/* Winner badge stays fully inert (invisible, non-interactive, hidden from
+   the accessibility tree via aria-hidden set in markup) until JS flips it
+   to .badge-revealed right when that candidate's bar lands on its real,
+   final value — i.e. at the exact moment of the reveal, not before. */
+.winner-badge.badge-pending{
+  opacity:0;
+  transform:scale(.6);
+  animation:none;
+  pointer-events:none;
+}
+.winner-badge.badge-revealed{
+  opacity:1;
+  transform:scale(1);
+  transition:opacity .35s ease, transform .35s ease;
   animation:winnerBadgeBreathe 1.6s ease-in-out infinite;
 }
 
 /* ---- Winner modal decorations (unchanged) ---- */
+/* On this page the modal should scale with the rest of the fluid layout
+   rather than sitting at Bootstrap's fixed 500px default — otherwise on
+   a large board it ends up looking like a small phone popup lost in the
+   middle of the screen. */
+html.results-no-scroll .modal-dialog{ max-width:34rem; }
+
 .modal-content{ border-radius:var(--radius-lg); border:none; overflow:hidden; box-shadow:var(--shadow-lg); }
 .modal-header{ border-bottom:1px solid var(--border); padding:1.1rem 1.5rem; }
 .modal-header.themed{ background:linear-gradient(120deg,var(--secondary),var(--secondary-dark)); color:#fff; }
@@ -629,20 +687,41 @@ html.results-no-scroll, body.results-no-scroll{
 .modal-footer{ border-top:1px solid var(--border); }
 .modal-body{ padding:1.5rem; text-align:center; }
 .crown{ font-size:2.2rem; color:var(--tertiary); margin-bottom:0.4rem; }
+
+/* College logo shown inside the winner popup itself, above the crown —
+   rectangular (not cropped to a circle) so the full wordmark is legible */
+.winner-modal-logo{
+  width:auto; max-width:13.75rem; height:4rem; object-fit:contain;
+  margin:0 auto 0.6rem;
+  display:block;
+  background:transparent;
+  border-radius:0;
+  padding:0;
+  box-shadow:none;
+}
+
 .winner-photo{
-  width:78px; height:78px; border-radius:50%; margin:0 auto 0.75rem;
+  width:4.875rem; height:4.875rem; border-radius:50%; margin:0 auto 0.75rem;
   background:linear-gradient(135deg,var(--secondary),var(--tertiary));
   color:#fff; display:flex; align-items:center; justify-content:center;
   font-weight:800; font-size:1.4rem;
 }
 .winner-sub{ color:var(--muted); margin-bottom:0.75rem; }
 
+/* Fully opaque backdrop — the page behind is now completely hidden via
+   .is-behind-modal above, so the backdrop just needs to be a solid,
+   on-brand colour rather than a translucent tint. */
+#winnerModal + .modal-backdrop, .winner-modal + .modal-backdrop{
+  background-color:var(--secondary-dark);
+  opacity:1 !important;
+}
+
 /* ---- Responsive fallback: below ~900px there isn't room for two columns,
    so stack them and allow the body (only) to scroll on small screens ---- */
 @media (max-width: 900px){
   .results-header-bar{ flex-wrap:wrap; row-gap:0.6rem; }
   .rhb-filter-form{ width:100%; flex-wrap:wrap; }
-  .rhb-field select{ width:100px; }
+  .rhb-field select{ width:6.25rem; }
 
   .results-body{ overflow-y:auto; }
   .results-stage{ flex-direction:column; height:auto; gap:1rem; }

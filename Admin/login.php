@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </div>
                 <button type="submit" class="btn btn-primary w-100"><i class="bi bi-box-arrow-in-right me-1"></i> Login</button>
             </form>
-            <p class="auth-footnote"><a href="password_hash.php">Create admin hash</a></p>
+            <!-- <p class="auth-footnote"><a href="password_hash.php">Create admin hash</a></p> -->
         </div>
     </div>
 </body>
