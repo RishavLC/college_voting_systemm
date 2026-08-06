@@ -383,3 +383,12 @@ COMMIT;
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+
+
+-- this block of code is for debugging purposes only. It will display the SMS response and generated OTP if SMS_DEBUG is enabled in config.php. You can remove this block in production.
+-- <?php if (SMS_DEBUG && !empty($sms_response)): ?>
+--                     <br><small class="text-muted">[DEBUG] <?= htmlspecialchars($sms_response) ?></small>
+--                     <?php endif; ?>
+--                     <?php if (SMS_DEBUG && isset($generated_otp)): ?>
+--                         <br><small class="text-muted">[DEBUG] OTP: <?= $generated_otp ?></small>
+--                     <?php endif; ?>

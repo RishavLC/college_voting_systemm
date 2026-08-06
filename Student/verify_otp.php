@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['verify_otp'])) {
             if ($row['voting_status'] == 1) {
                 $error = "You have already voted.";
             } else {
-                // OTP matched – log in the student (start session)
+                // OTP matched – log in the student
                 session_start();
                 $_SESSION['student_id'] = $row['student_id'];
                 $_SESSION['student_verified'] = true;
