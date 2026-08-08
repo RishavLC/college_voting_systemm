@@ -266,14 +266,9 @@ function initials_of($name) {
             overflow: hidden;
         }
 
+        /* Removed the gold bar on top */
         .header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: var(--gradient-gold);
+            display: none;
         }
 
         .header::after {
@@ -296,30 +291,38 @@ function initials_of($name) {
             z-index: 1;
         }
 
+        /* Rectangular Logo */
         .header-logo {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: var(--gradient-gold);
+            width: 60px;
+            height: 60px;
+            background: var(--white);
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 900;
-            font-size: 20px;
-            color: var(--primary-dark);
             flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(212, 168, 67, 0.3);
             overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            padding: 4px;
         }
 
         .header-logo img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
+            display: block;
         }
 
         .header-logo .logo-text {
-            display: flex;
+            font-weight: 900;
+            font-size: 20px;
+            color: var(--primary-dark);
+            display: none;
+        }
+
+        /* When image fails, show text */
+        .header-logo img[style*="display: none"] + .logo-text {
+            display: flex !important;
             align-items: center;
             justify-content: center;
             width: 100%;
@@ -1268,6 +1271,11 @@ function initials_of($name) {
             .voted-candidate-display .info {
                 text-align: center;
             }
+
+            .header-logo {
+                width: 50px;
+                height: 50px;
+            }
         }
 
         @media (max-width: 360px) {
@@ -1298,8 +1306,8 @@ function initials_of($name) {
     <header class="header">
         <div class="header-left">
             <div class="header-logo">
-                <img src="../assets/img/logo.png" alt="HDC" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\'logo-text\'>HDC</div>';">
-                <div class="logo-text" style="display:none;">HDC</div>
+                <img src="../assets/img/logo.png" alt="HDC" onerror="this.style.display='none'; this.parentElement.querySelector('.logo-text').style.display='flex';">
+                <div class="logo-text">HDC</div>
             </div>
             <div class="header-brand">
                 <h1>Himalaya Darshan College</h1>
