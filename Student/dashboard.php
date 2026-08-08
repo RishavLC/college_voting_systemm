@@ -309,6 +309,21 @@ function initials_of($name) {
             color: var(--primary-dark);
             flex-shrink: 0;
             box-shadow: 0 4px 12px rgba(212, 168, 67, 0.3);
+            overflow: hidden;
+        }
+
+        .header-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .header-logo .logo-text {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
         }
 
         .header-brand h1 {
@@ -323,6 +338,10 @@ function initials_of($name) {
             color: rgba(255,255,255,0.7);
             font-size: 13px;
             font-weight: 400;
+        }
+
+        .header-brand p i {
+            margin-right: 4px;
         }
 
         .header-right {
@@ -344,6 +363,7 @@ function initials_of($name) {
             display: flex;
             align-items: center;
             gap: 8px;
+            justify-content: flex-end;
         }
 
         .header-student .name i {
@@ -449,7 +469,7 @@ function initials_of($name) {
         }
 
         /* ============================================
-           CANDIDATES SECTION
+           CANDIDATES SECTION - DYNAMIC GRID
            ============================================ */
         .candidates-header {
             display: flex;
@@ -482,10 +502,50 @@ function initials_of($name) {
             font-weight: 500;
         }
 
+        /* Dynamic Grid - adjusts based on number of candidates */
         .candidates-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 24px;
+        }
+
+        /* 1 candidate - full width */
+        .candidates-grid.count-1 {
+            grid-template-columns: 1fr;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        /* 2 candidates - 50% each */
+        .candidates-grid.count-2 {
+            grid-template-columns: repeat(2, 1fr);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* 3 candidates - 33.33% each */
+        .candidates-grid.count-3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        /* 4 candidates - 25% each */
+        .candidates-grid.count-4 {
+            grid-template-columns: repeat(4, 1fr);
+        }
+
+        /* 5+ candidates - responsive grid */
+        .candidates-grid.count-5,
+        .candidates-grid.count-6 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .candidates-grid.count-7,
+        .candidates-grid.count-8,
+        .candidates-grid.count-9 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .candidates-grid.count-10-plus {
+            grid-template-columns: repeat(4, 1fr);
         }
 
         .candidate-card {
@@ -1059,8 +1119,23 @@ function initials_of($name) {
            RESPONSIVE
            ============================================ */
         @media (max-width: 992px) {
-            .candidates-grid {
-                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            .candidates-grid.count-3 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .candidates-grid.count-4 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .candidates-grid.count-5,
+            .candidates-grid.count-6 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .candidates-grid.count-7,
+            .candidates-grid.count-8,
+            .candidates-grid.count-9 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .candidates-grid.count-10-plus {
+                grid-template-columns: repeat(3, 1fr);
             }
         }
 
@@ -1089,6 +1164,10 @@ function initials_of($name) {
                 text-align: left;
             }
 
+            .header-student .name {
+                justify-content: flex-start;
+            }
+
             .election-card {
                 flex-direction: column;
                 align-items: stretch;
@@ -1104,9 +1183,22 @@ function initials_of($name) {
                 justify-content: center;
             }
 
-            .candidates-grid {
-                grid-template-columns: 1fr 1fr;
-                gap: 16px;
+            .candidates-grid.count-2,
+            .candidates-grid.count-3,
+            .candidates-grid.count-4 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .candidates-grid.count-5,
+            .candidates-grid.count-6,
+            .candidates-grid.count-7,
+            .candidates-grid.count-8,
+            .candidates-grid.count-9 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .candidates-grid.count-10-plus {
+                grid-template-columns: repeat(2, 1fr);
             }
 
             .voted-state {
@@ -1128,8 +1220,26 @@ function initials_of($name) {
         }
 
         @media (max-width: 480px) {
-            .candidates-grid {
+            .candidates-grid.count-1 {
+                max-width: 100%;
+            }
+            
+            .candidates-grid.count-2,
+            .candidates-grid.count-3,
+            .candidates-grid.count-4 {
                 grid-template-columns: 1fr;
+            }
+
+            .candidates-grid.count-5,
+            .candidates-grid.count-6,
+            .candidates-grid.count-7,
+            .candidates-grid.count-8,
+            .candidates-grid.count-9 {
+                grid-template-columns: 1fr;
+            }
+
+            .candidates-grid.count-10-plus {
+                grid-template-columns: 1fr 1fr;
             }
 
             .header-brand h1 {
@@ -1187,7 +1297,10 @@ function initials_of($name) {
          ========================================== -->
     <header class="header">
         <div class="header-left">
-            <div class="header-logo">HDC</div>
+            <div class="header-logo">
+                <img src="../assets/img/logo.png" alt="HDC" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\'logo-text\'>HDC</div>';">
+                <div class="logo-text" style="display:none;">HDC</div>
+            </div>
             <div class="header-brand">
                 <h1>Himalaya Darshan College</h1>
                 <p><i class="fas fa-vote-yea"></i> Student Voting System</p>
@@ -1311,7 +1424,7 @@ function initials_of($name) {
         </div>
 
         <!-- ==========================================
-             CANDIDATES
+             CANDIDATES - DYNAMIC GRID
              ========================================== -->
         <div class="candidates-header">
             <h3><i class="fas fa-user-tie"></i> Choose Your Candidate</h3>
@@ -1320,7 +1433,16 @@ function initials_of($name) {
             </span>
         </div>
 
-        <div class="candidates-grid">
+        <?php 
+        $candidateCount = count($candidates);
+        // Determine grid class based on number of candidates
+        $gridClass = 'count-' . $candidateCount;
+        if ($candidateCount >= 10) {
+            $gridClass = 'count-10-plus';
+        }
+        ?>
+
+        <div class="candidates-grid <?= $gridClass ?>">
             <?php 
             $index = 1;
             foreach ($candidates as $c): 
